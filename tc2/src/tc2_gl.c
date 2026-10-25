@@ -321,6 +321,13 @@ void tc2_gl_set_stereo(int sep_mm, int conv_cm)
     st_sep_mm = sep_mm < 0 ? 0 : sep_mm > 400 ? 400 : sep_mm;
     st_conv_cm = conv_cm < 50 ? 50 : conv_cm > 5000 ? 5000 : conv_cm;
 }
+/* LOOK-AROUND (Display > 3D look-around, a Leia SR display's eye tracker: src/tc2_window.c): both cameras moved with the player's head,
+ * metres right, up and toward the screen. The screen plane stays where it is -- the display is a window onto the arcade's view */
+static float st_head[3];
+void tc2_gl_set_head(float right_m, float up_m, float fwd_m)
+{
+    st_head[0] = right_m * ST_UNITS_PER_M; st_head[1] = up_m * ST_UNITS_PER_M; st_head[2] = fwd_m * ST_UNITS_PER_M;
+}
 /* screen layout, not world: the direct quads (already projected), and the HUD's models (tc2_game.flat_models) -- drawn without parallax */
 static int st_flat(const tc2_built *b, const tc2_poly *p)
 {
@@ -338,7 +345,10 @@ static int st_flat(const tc2_built *b, const tc2_poly *p)
  * the shade perspective-correct exactly as the hardware's u/z, v/z, i/z), u v shade, and the polygon's parameters and viewport clip */
 static int fill_vertices(const tc2_built *b)
 {
-    const float st_half = st_sep_mm / 2000.0f * ST_UNITS_PER_M, st_iconv = 1.0f / (st_conv_cm / 100.0f * ST_UNITS_PER_M);
+    const float st_half = st_sep_mm / 2000.0f * ST_UNITS_PER_M, st_z0 = st_conv_cm / 100.0f * ST_UNITS_PER_M;
+    /* this picture's camera, relative to the arcade's: the eye (sideways) plus the head (look-around) */
+    const float cam[3] = { (float)st_eye * st_half + st_head[0], st_head[1], st_head[2] };
+    const int moved = cam[0] != 0 || cam[1] != 0 || cam[2] != 0;
     size_t need = 0;
     for (int i = 0; i < b->npoly; i++) need += (size_t)(b->polys[i].n - 2) * 3;
     if (need * VFLOATS > vcap) { vcap = need * VFLOATS * 2 + 4096; verts = realloc(verts, vcap * sizeof *verts); }
@@ -351,15 +361,28 @@ static int fill_vertices(const tc2_built *b)
         const int full = ex && cl <= 0 && cr >= 640;
         const int ccl = full ? -ex : cl, ccr = full ? 640 + ex : cr;
         const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3);
-        /* this eye's camera: a vertex at depth z moves by -eye * fov * s * (1/z - 1/conv) board pixels (nearer than the screen plane: out) */
-        const float st_k = st_eye && !st_flat(b, p) ? -(float)st_eye * b->fs.list.e[p->entry].vp_fov * st_half : 0.0f;
+        /* the moved camera (st_eye, st_head): each vertex back into the arcade camera's space from its screen place and 1/z, then seen from
+         * the camera at c through the same screen rectangle at st_z0 (off-axis). Sideways only, that is a shift of -fov * c.x * (1/z - 1/z0)
+         * board pixels (nearer than the screen plane: out of it); the head's up / forward moves add the rest. Screen layout is not moved */
+        const int reproject = moved && !st_flat(b, p);
+        const float f = reproject ? b->fs.list.e[p->entry].vp_fov : 1.0f;
+        const float pcx = 320.0f + (float)p->vp_offset_x, pcy = 240.0f - (float)p->vp_offset_y;   /* the projection centre on the screen */
         for (int k = 1; k + 1 < p->n; k++) {
             const int tri[3] = { 0, k, k + 1 };
             for (int j = 0; j < 3; j++) {
                 const tc2_pvert *v = &p->pv[tri[j]];
                 const float ooz = v->p[0] != 0 ? v->p[0] : 1e-30f, w = 1.0f / ooz;
-                const float sx = v->x + (float)cl + st_k * (ooz - st_iconv), sy = v->y + (float)ct;
-                *o++ = ((sx + (float)ex) / (320.0f + (float)ex) - 1.0f) * w; *o++ = (sy / 240.0f - 1.0f) * w; *o++ = 0; *o++ = w;
+                float sx = v->x + (float)cl, sy = v->y + (float)ct, wc = w;
+                if (reproject) {
+                    const float a = (sx - pcx) / f, bb = (pcy - sy) / f;          /* x / z, y / z (y up) */
+                    float d = w - cam[2]; if (d < 0.5f * w) d = 0.5f * w;         /* the depth from the moved camera; a head that comes
+                                                                                   * close cannot pass a vertex */
+                    const float t = (st_z0 - cam[2]) / d;
+                    sx = pcx + f * (cam[0] + (a * w - cam[0]) * t) / st_z0;
+                    sy = pcy - f * (cam[1] + (bb * w - cam[1]) * t) / st_z0;
+                    wc = d;
+                }
+                *o++ = ((sx + (float)ex) / (320.0f + (float)ex) - 1.0f) * wc; *o++ = (sy / 240.0f - 1.0f) * wc; *o++ = 0; *o++ = wc;
                 *o++ = v->p[1] * w; *o++ = v->p[2] * w; *o++ = v->p[3] * w;
                 *o++ = (float)p->color_base; *o++ = (float)p->cmode; *o++ = (float)p->tbase; *o++ = flags;
                 *o++ = (float)ccl; *o++ = (float)ct; *o++ = (float)ccr; *o++ = (float)cb;

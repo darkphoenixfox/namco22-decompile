@@ -63,7 +63,7 @@ static const eng_ui_page page_file = { "File", 220, 0, 0, file_n, file_val, NULL
 
 int tc2_depth_on(void); void tc2_depth_set(int on);     /* src/tc2_render.c: exact depth */
 int tc2_smooth_on(void); void tc2_smooth_set(int on);   /* src/tc2_render.c: motion smoothing */
-extern int tc2_3d_mode, tc2_3d_sep, tc2_3d_conv;        /* src/tc2_window.c: stereo 3D -- the mode, eye separation (mm), screen plane (cm) */
+extern int tc2_3d_mode, tc2_3d_sep, tc2_3d_conv, tc2_3d_look, tc2_3d_duck; void tc2_3d_set_look(int pct), tc2_3d_set_duck(int cm);        /* src/tc2_window.c: stereo 3D -- the mode, eye separation (mm), screen plane (cm) */
 int tc2_3d_count(void); const char *tc2_3d_mode_name(int m); void tc2_3d_set(int mode, int sep_mm, int conv_cm); void tc2_3d_redraw(void);
 extern int tc2_out_net, tc2_out_rumble, tc2_out_lamps;                  /* src/tc2_out.c: the recoil outputs */
 void tc2_out_set_net(int on), tc2_out_set_rumble(int on), tc2_out_set_lamps(int on);
@@ -75,7 +75,7 @@ static void bar(char *v, size_t vn, int val, int lo, int hi, const char *txt)   
     b[10] = 0; snprintf(v, vn, "[%s] %s", b, txt);
 }
 /* ---- Display: the choices of engine/eng_display.h ------------------------------ */
-enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_SMOOTH, D_DEPTH, D_3D, D_3DSEP, D_3DCONV, D_C404, D_GAMMA, D_BRIGHT, D_CROSS, D_XIMG, D_FLASH, D_GBORDER, D_GBPOS, D_OUTNET, D_LAMPS, D_RUMBLE, D_N };   /* D_CROSS.. last: only light-gun games show them */
+enum { D_WIDE, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_SMOOTH, D_DEPTH, D_3D, D_3DSEP, D_3DCONV, D_3DLOOK, D_3DDUCK, D_C404, D_GAMMA, D_BRIGHT, D_CROSS, D_XIMG, D_FLASH, D_GBORDER, D_GBPOS, D_OUTNET, D_LAMPS, D_RUMBLE, D_N };   /* D_CROSS.. last: only light-gun games show them */
 static int disp_n(void) { return g_eng_disp_light_gun ? D_N : D_CROSS; }
 static bool disp_enabled(int r)
 {
@@ -84,6 +84,7 @@ static bool disp_enabled(int r)
     if (r == D_HUD) return g_eng_disp.wide;
     if (r == D_XIMG) return g_eng_disp.crosshair;
     if (r == D_3DSEP || r == D_3DCONV) return tc2_3d_mode != 0;
+    if (r == D_3DLOOK || r == D_3DDUCK) return tc2_3d_mode == 4;  /* the Leia SR display's eye tracker */
     if (r == D_GBPOS) return g_eng_disp.gun_border != 0;
     return true;
 }
@@ -107,6 +108,10 @@ static void disp_text(int r, char *l, size_t ln, char *v, size_t vn)
                       snprintf(l, ln, "3D depth (eye separation)"); bar(v, vn, tc2_3d_sep, 0, 200, t); break; }
     case D_3DCONV:  { char t[40]; snprintf(t, sizeof t, "%.1f m (nearer comes out)", tc2_3d_conv / 100.0);
                       snprintf(l, ln, "3D screen distance"); bar(v, vn, tc2_3d_conv, 50, 2000, t); break; }
+    case D_3DLOOK:  { char t[48]; if (tc2_3d_look) snprintf(t, sizeof t, "%d%% of the head's movement", tc2_3d_look); else snprintf(t, sizeof t, "OFF");
+                      snprintf(l, ln, "3D look-around (F10 = centre here)"); bar(v, vn, tc2_3d_look, 0, 200, t); break; }
+    case D_3DDUCK:  snprintf(l, ln, "3D duck to take cover (F10 = upright here)");
+                    if (tc2_3d_duck) snprintf(v, vn, "ON: duck %d cm below your upright height", tc2_3d_duck); else snprintf(v, vn, "OFF"); break;
     case D_C404:    { char t[48]; snprintf(t, sizeof t, tc2_pic_c404 == 100 ? "100%% (the board's table)" : tc2_pic_c404 ? "%d%%" : "0%% (as MAME)", tc2_pic_c404);
                       snprintf(l, ln, "Arcade gamma"); bar(v, vn, tc2_pic_c404, 0, 100, t); break; }
     case D_GAMMA:   { char t[32]; snprintf(t, sizeof t, "%.2f%s", tc2_pic_gamma / 100.0, tc2_pic_gamma == 100 ? " (neutral)" : tc2_pic_gamma > 100 ? " (brighter mids)" : " (darker mids)");
@@ -149,6 +154,8 @@ static void disp_change(int r, int dir)
     case D_3DCONV:  { const int st = tc2_3d_conv < 200 ? 10 : tc2_3d_conv < 500 ? 25 : 100;   /* finer steps near */
                       int v = tc2_3d_conv + st * (dir ? dir : 1); if (!dir && v > 2000) v = 50; v = v < 50 ? 50 : v > 2000 ? 2000 : v;
                       tc2_3d_set(tc2_3d_mode, tc2_3d_sep, v); tc2_3d_redraw(); break; }
+    case D_3DDUCK:  tc2_3d_set_duck(dir ? (tc2_3d_duck ? tc2_3d_duck : 10) + 5 * dir : tc2_3d_duck ? 0 : 15); break;   /* Enter: off / 15 cm; Left/Right 5 cm steps */
+    case D_3DLOOK:  tc2_3d_set_look(dir ? tc2_3d_look + 10 * dir : tc2_3d_look >= 200 ? 0 : tc2_3d_look < 50 ? 50 : tc2_3d_look + 50); break;   /* 10 % steps, Enter 0 / 50 / 100 / 150 / 200 */
     case D_C404:    tc2_pic_c404 = dir ? tc2_pic_c404 + 10 * dir : (tc2_pic_c404 >= 100 ? 0 : tc2_pic_c404 + 10);     /* Left/Right 10% steps, Enter cycles */
                     if (tc2_pic_c404 < 0) tc2_pic_c404 = 0; if (tc2_pic_c404 > 100) tc2_pic_c404 = 100; eng_cfg_set_int("pic_c404", tc2_pic_c404); break;
     case D_GAMMA:   tc2_pic_gamma = dir ? tc2_pic_gamma + 5 * dir : (tc2_pic_gamma >= 200 ? 50 : tc2_pic_gamma + 5);    /* 0.05 steps */

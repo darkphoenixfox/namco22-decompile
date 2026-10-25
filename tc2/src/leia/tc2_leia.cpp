@@ -8,6 +8,7 @@
  *   leia_display(rect, view) where the SR display is on the desktop, and the view size Leia recommends
  *   leia_set_view(tex, w, h) the side-by-side picture to weave: one GL texture 2w x h, the left eye in the left half
  *   leia_weave()             weave it into the bound framebuffer (the window), for the eyes the SR eye tracker sees now
+ *   leia_eyes(l, r)          the tracked eyes (mm), for look-around; leia_home(p) where the display expects them
  *   leia_close()
  *
  * No C++ exception leaves this file: each call catches and says what went wrong in leia_error().
@@ -25,6 +26,7 @@
 static SR::SRContext *ctx;
 static SR::IGLWeaver1 *weaver;
 static char err[256];
+static float home[3];                                    /* the display's default viewing position, mm (leia_display) */
 
 API const char *leia_error(void) { return err; }
 
@@ -69,7 +71,26 @@ API int leia_display(int rect[4], int view[2])
         const SR_recti r = d->getLocation();
         rect[0] = (int)r.left; rect[1] = (int)r.top; rect[2] = (int)(r.right - r.left); rect[3] = (int)(r.bottom - r.top);
         view[0] = d->getRecommendedViewsTextureWidth(); view[1] = d->getRecommendedViewsTextureHeight();
+        d->getDefaultViewingPosition(home[0], home[1], home[2]);
         return rect[2] > 0 && rect[3] > 0;
+    } catch (...) { return 0; }
+}
+
+/* where the display expects the viewer's eyes (their midpoint), mm from the display's centre: x right, y up, z out of the screen.
+ * Known after leia_display(); 0 = not known */
+API int leia_home(float p[3])
+{
+    p[0] = home[0]; p[1] = home[1]; p[2] = home[2];
+    return home[2] != 0;
+}
+
+/* the tracked eyes, mm, the same axes, predicted for the moment the next woven picture shows. 0 = no eyes (none seen, or no weaver) */
+API int leia_eyes(float left[3], float right[3])
+{
+    try {
+        if (!weaver) return 0;
+        weaver->getPredictedEyePositions(left, right);
+        return left[2] != 0 || right[2] != 0;
     } catch (...) { return 0; }
 }
 

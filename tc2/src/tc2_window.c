@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <sys/stat.h>
 #include <SDL2/SDL.h>
 #include "eng/eng_gl.h"
@@ -57,6 +58,9 @@ static SDL_Rect pic_r;                                          /* the GAME's 4:
 enum { TC2_3D_OFF, TC2_3D_SBS, TC2_3D_CROSS, TC2_3D_ANAGLYPH, TC2_3D_LEIA, TC2_3D_N };
 int tc2_3d_mode, tc2_3d_sep = 65, tc2_3d_conv = 400;           /* the mode; the cameras' distance apart (mm); the screen plane's distance (cm) */
 int tc2_3d_count(void) { return TC2_3D_N; }
+int tc2_3d_look;                                               /* LOOK-AROUND strength, % of the head's movement (0 = off; Leia SR only) */
+int tc2_3d_duck;                                               /* DUCK TO TAKE COVER: cm below the upright head (0 = off; Leia SR only) */
+void tc2_3d_set_look(int pct) { tc2_3d_look = pct < 0 ? 0 : pct > 200 ? 200 : pct; eng_cfg_set_int("stereo_look", tc2_3d_look); }
 const char *tc2_3d_mode_name(int m)
 {
     static const char *n[TC2_3D_N] = { "OFF", "side by side (left eye left)", "cross-eyed (eyes swapped)", "anaglyph (red / cyan glasses)",
@@ -84,8 +88,10 @@ static int sbs_halves(void) { return stereo_on() && (tc2_3d_mode == TC2_3D_SBS |
 static void draw_gpu(const tc2_built *b);
 void tc2_3d_redraw(void) { if (gpu && win) { const tc2_built *b = tc2_built_latest(); if (b) draw_gpu(b); } }   /* a 3D change shows at once, paused or in the menu */
 /* the GPU picture of b: one, or with 3D the two eyes */
+static void leia_head(void);
 static void draw_gpu(const tc2_built *b)
 {
+    leia_head();
     if (stereo_on()) { gpu_tex = tc2_gl_draw_eye(b, -1); gpu_tex_r = tc2_gl_draw_eye(b, 1); }
     else gpu_tex = tc2_gl_draw(b);
 }
@@ -292,6 +298,8 @@ int tc2_window_open(int scale, int fullscreen)
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 640, 480, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
     gpu = tc2_gl_init();
+    tc2_3d_look = eng_cfg_int("stereo_look", 0); if (tc2_3d_look < 0 || tc2_3d_look > 200) tc2_3d_look = 0;
+    tc2_3d_duck = eng_cfg_int("stereo_duck", 0); if (tc2_3d_duck < 0 || tc2_3d_duck > 40) tc2_3d_duck = 0;
     st_apply(eng_cfg_int("stereo", 0), eng_cfg_int("stereo_sep", 65), eng_cfg_int("stereo_conv", 400));
     { void tc2_render_soft(int); tc2_render_soft(!gpu); }       /* the worker then only builds the frame; the GPU draws it */
     return 1;
@@ -420,6 +428,7 @@ static void draw_crosshair(void)
 static struct {
     HMODULE dll; int ok, w, h;
     const char *(*error)(void); int (*open)(HWND, double); int (*display)(int *, int *);
+    int (*eyes)(float *, float *); int (*home)(float *);             /* look-around (absent from an older tc2_leia.dll) */
     void (*set_view)(unsigned, int, int); void (*weave)(void); void (*close)(void);
     void (APIENTRY *GenFramebuffers)(GLsizei, GLuint *); void (APIENTRY *BindFramebuffer)(GLenum, GLuint);
     void (APIENTRY *FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint); GLenum (APIENTRY *CheckFramebufferStatus)(GLenum);
@@ -440,6 +449,7 @@ static int leia_start(void)
         if ((lr.dll = LoadLibraryA(p))) {
             LOADFN(lr.error, dll_fn, "leia_error"); LOADFN(lr.open, dll_fn, "leia_open"); LOADFN(lr.display, dll_fn, "leia_display");
             LOADFN(lr.set_view, dll_fn, "leia_set_view"); LOADFN(lr.weave, dll_fn, "leia_weave"); LOADFN(lr.close, dll_fn, "leia_close");
+            LOADFN(lr.eyes, dll_fn, "leia_eyes"); LOADFN(lr.home, dll_fn, "leia_home");
         }
     }
     if (!lr.dll || !lr.error || !lr.open || !lr.display || !lr.set_view || !lr.weave || !lr.close)
@@ -481,6 +491,89 @@ static int leia_start(void)
     eng_ui_set_hint("3D: Leia SR display", 120);
     return 1;
 }
+/* LOOK-AROUND: the midpoint of the tracked eyes against where the display expects them (mm), times the strength, moves both cameras
+ * (src/tc2_gl.c tc2_gl_set_head) -- capped, and eased a little against the tracker's jitter; eyes lost: back to the arcade's view */
+#define LOOK_MAX_M 0.25f
+/* DUCK TO TAKE COVER (Display > 3D duck to take cover): the head as the arcade's foot pedal -- up = held (out of cover), ducked = let go
+ * (cover, reload). Ducked = more than tc2_3d_duck cm below the player's own upright height: the highest recent head height, let down
+ * slowly (DUCK_DRIFT) so it follows a change of posture; back up = 3 cm past that line (no flicker at the edge). Eyes lost for longer
+ * than DUCK_LOST_MS (ducked out of the tracker's view) = ducked too: hiding never gets the player shot */
+#define DUCK_DRIFT_MM_S 5.0f
+#define DUCK_HYST_MM 30.0f
+#define DUCK_LOST_MS 250
+static int duck_up = 1, duck_have; static float duck_ref; static uint64_t duck_t, duck_lost;
+void tc2_3d_set_duck(int cm) { tc2_3d_duck = cm < 0 ? 0 : cm > 40 ? 40 : cm; duck_have = 0; duck_up = 1; eng_cfg_set_int("stereo_duck", tc2_3d_duck); }
+int tc2_head_pedal(void) { return lr.ok && tc2_3d_mode == TC2_3D_LEIA && tc2_3d_duck > 0 && duck_up; }   /* src/tc2_input.c: the pedal held */
+static void duck_update(int seen, float y)
+{
+    const uint64_t now = SDL_GetTicks64();
+    const float dt = duck_t ? (now - duck_t) / 1000.0f : 0; duck_t = now;
+    if (!seen) {
+        if (!duck_lost) duck_lost = now;
+        else if (duck_up && now - duck_lost > DUCK_LOST_MS) { duck_up = 0; fprintf(stderr, "[LEIA] duck: eyes lost -> cover\n"); }
+        return;
+    }
+    duck_lost = 0;
+    if (!duck_have || y > duck_ref) { duck_ref = y; duck_have = 1; } else duck_ref -= DUCK_DRIFT_MM_S * dt;
+    const float line = duck_ref - tc2_3d_duck * 10.0f;
+    if (duck_up && y < line) { duck_up = 0; fprintf(stderr, "[LEIA] duck: head %.0f mm, upright %.0f -> cover\n", y, duck_ref); }
+    else if (!duck_up && y > line + DUCK_HYST_MM) { duck_up = 1; fprintf(stderr, "[LEIA] duck: head %.0f mm, upright %.0f -> up\n", y, duck_ref); }
+}
+/* THE CENTRE the head is measured from: the player's own (F10: where the head is now; saved as stereo_home in tc2.cfg), else the
+ * display's default viewing position. Shift+F10 forgets the player's own */
+static float own_home[3]; static int own_home_set = -1;      /* -1: not read from tc2.cfg yet */
+static void home_load(void)
+{
+    if (own_home_set >= 0) return;
+    own_home_set = eng_cfg_int("stereo_home", 0) != 0;
+    own_home[0] = (float)eng_cfg_int("stereo_home_x", 0); own_home[1] = (float)eng_cfg_int("stereo_home_y", 0); own_home[2] = (float)eng_cfg_int("stereo_home_z", 650);
+}
+void tc2_3d_recenter(int forget)
+{
+    void eng_ui_set_hint(const char *, int);
+    home_load();
+    if (!lr.ok || tc2_3d_mode != TC2_3D_LEIA) { eng_ui_set_hint("Head centre: needs 3D on a Leia SR display", 180); return; }
+    float l[3], r[3];
+    if (forget) {
+        own_home_set = 0; eng_cfg_set_int("stereo_home", 0);
+        eng_ui_set_hint("Head centre: the display's default position", 180);
+    } else if (lr.eyes && lr.eyes(l, r)) {
+        for (int i = 0; i < 3; i++) own_home[i] = (l[i] + r[i]) / 2;
+        own_home_set = 1;
+        eng_cfg_set_int("stereo_home", 1);
+        eng_cfg_set_int("stereo_home_x", (int)own_home[0]); eng_cfg_set_int("stereo_home_y", (int)own_home[1]); eng_cfg_set_int("stereo_home_z", (int)own_home[2]);
+        eng_ui_set_hint("Head centre: here", 120);
+        fprintf(stderr, "[LEIA] head centre set: %.0f %.0f %.0f mm\n", own_home[0], own_home[1], own_home[2]);
+    } else { eng_ui_set_hint("Head centre: no eyes seen -- face the display and press F10 again", 240); return; }
+    duck_ref = own_home_set ? own_home[1] : duck_ref; duck_have = own_home_set; duck_up = 1;   /* upright = here */
+}
+static void leia_head(void)
+{
+    static float h[3];
+    float want[3] = { 0, 0, 0 };
+    home_load();
+    if (lr.ok && tc2_3d_mode == TC2_3D_LEIA && (tc2_3d_look > 0 || tc2_3d_duck > 0) && lr.eyes) {
+        float l[3] = { 0 }, r[3] = { 0 }, home[3] = { 0, 0, 650 };   /* the player's centre (F10), else the display's own default */
+        if (own_home_set == 1) memcpy(home, own_home, sizeof home);
+        else if (lr.home) { float hm[3]; if (lr.home(hm)) memcpy(home, hm, sizeof home); }
+        const int seen = lr.eyes(l, r);
+        if (tc2_3d_duck > 0) duck_update(seen, (l[1] + r[1]) / 2);
+        if (seen && tc2_3d_look > 0) {
+            const float k = tc2_3d_look / 100.0f / 1000.0f;        /* mm -> m, times the strength */
+            want[0] = ((l[0] + r[0]) / 2 - home[0]) * k;
+            want[1] = ((l[1] + r[1]) / 2 - home[1]) * k;
+            want[2] = -((l[2] + r[2]) / 2 - home[2]) * k;         /* nearer the screen = forward */
+            for (int i = 0; i < 3; i++) want[i] = want[i] > LOOK_MAX_M ? LOOK_MAX_M : want[i] < -LOOK_MAX_M ? -LOOK_MAX_M : want[i];
+            static unsigned n;
+            if (n++ % 600 == 0) fprintf(stderr, "[LEIA] eyes L %.0f %.0f %.0f  R %.0f %.0f %.0f mm, home %.0f %.0f %.0f: look %.3f %.3f %.3f m\n",
+                                        l[0], l[1], l[2], r[0], r[1], r[2], home[0], home[1], home[2], want[0], want[1], want[2]);
+        }
+    }
+    for (int i = 0; i < 3; i++) h[i] += (want[i] - h[i]) * 0.5f;
+    if (fabsf(h[0]) + fabsf(h[1]) + fabsf(h[2]) < 1e-5f) h[0] = h[1] = h[2] = 0;
+    tc2_gl_set_head(h[0], h[1], h[2]);
+}
+int tc2_3d_look_live(void) { return lr.ok && tc2_3d_mode == TC2_3D_LEIA && tc2_3d_look > 0; }
 static void leia_stop(void)
 {
     if (!lr.ok) return;
@@ -558,6 +651,11 @@ static void leia_compose(int ui, bool *quit)
 #else
 static int leia_start(void) { eng_ui_set_hint("3D: Leia SR displays need Windows", 300); return 0; }
 static void leia_stop(void) {}
+static void leia_head(void) {}
+int tc2_3d_look_live(void) { return 0; }
+void tc2_3d_set_duck(int cm) { tc2_3d_duck = cm < 0 ? 0 : cm > 40 ? 40 : cm; eng_cfg_set_int("stereo_duck", tc2_3d_duck); }
+int tc2_head_pedal(void) { return 0; }
+void tc2_3d_recenter(int forget) { (void)forget; }
 static void leia_compose(int ui, bool *quit) { draw_picture(); draw_crosshair(); if (ui) eng_ui_draw(quit); }
 #endif
 /* the window's picture, the crosshair and (ui) the menu / the hint line: as they are, or woven for a Leia SR display */
@@ -661,6 +759,7 @@ static int pass(int new_frame)
             case SDL_SCANCODE_F6: { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
             case SDL_SCANCODE_F7: { void ss22_input_mouse_step(int); ss22_input_mouse_step(1); } break;   /* the mouse speed: Direct, 125, 150, 200, 300 % */
             case SDL_SCANCODE_F8: eng_disp_cycle_gun_border(); break;     /* the light gun's white border round the picture (Sinden-style guns) */
+            case SDL_SCANCODE_F10: tc2_3d_recenter((e.key.keysym.mod & KMOD_SHIFT) != 0); break;   /* the head's centre: here (Shift: the display's) */
             case SDL_SCANCODE_F9: { tc2_3d_set((tc2_3d_mode + 1) % TC2_3D_N, tc2_3d_sep, tc2_3d_conv);   /* 3D: OFF, side by side, cross-eyed, anaglyph */
                 void eng_ui_set_hint(const char *, int); char b[64]; snprintf(b, sizeof b, gpu ? "3D: %s" : "3D: needs the GPU picture", tc2_3d_mode_name(tc2_3d_mode)); eng_ui_set_hint(b, 120);
                 tc2_3d_redraw(); } break;
@@ -693,6 +792,7 @@ static int pass(int new_frame)
     tc2_present_hook = NULL;
     if (vs.live) eng_vsync_resync(&vs);                          /* leaving polled presentation (menu, pause, a blocking swap): clocks from now */
     if (new_frame) prepare_frame(NULL);
+    else if (tc2_3d_look_live()) tc2_3d_redraw();                /* paused / the menu: the kept frame, seen from where the head is now */
     if (!new_frame) smooth_active = 0;                            /* the menu / pause: the kept picture (menu included) is re-shown */
     vs.extra = smooth_active ? smooth_extra : NULL;
     if (eng_vsync_show(&vs)) {

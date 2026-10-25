@@ -49,6 +49,7 @@ void tc2_gl_set_scale(int s);                          /* the internal resolutio
 unsigned tc2_gl_draw(const tc2_built *b);              /* draws b; returns the GL texture holding the picture */
 unsigned tc2_gl_draw_eye(const tc2_built *b, int eye); /* 3D: one eye of b (-1 left, +1 right: its own texture; 0 = tc2_gl_draw) */
 void tc2_gl_set_stereo(int sep_mm, int conv_cm);       /* 3D: the two cameras' distance apart (mm), the screen plane's distance (cm) */
+void tc2_gl_set_head(float right_m, float up_m, float fwd_m);   /* 3D look-around: both cameras moved with the player's head (m) */
 int  tc2_gl_scale(void);
 void tc2_gl_set_wide(int e);                           /* widescreen: the picture is (640 + 2e) x 480 board pixels, the 3D wider (Hor+), the text in the 4:3 centre */
 int  tc2_gl_wide(void);

@@ -39,7 +39,12 @@ static const ss22_action actions[] = {
 };
 
 uint16_t tc2_inputs;                          /* the pressed IN_* bits, for the I/O board */
-static void tc2_send_inputs(uint16_t pressed, unsigned wheel, unsigned p1, unsigned p2) { (void)wheel; (void)p1; (void)p2; tc2_inputs = pressed; }
+int tc2_head_pedal(void);                     /* src/tc2_window.c: a Leia SR display's eye tracker as the pedal (Display > 3D duck to take cover) */
+static void tc2_send_inputs(uint16_t pressed, unsigned wheel, unsigned p1, unsigned p2)
+{
+    (void)wheel; (void)p1; (void)p2;
+    tc2_inputs = (uint16_t)(pressed | (tc2_head_pedal() ? IN_PEDAL : 0));
+}
 
 const ss22_input_game tc2_input_game = {
     actions, (int)(sizeof actions / sizeof *actions),
