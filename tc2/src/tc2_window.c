@@ -89,6 +89,9 @@ static void draw_gpu(const tc2_built *b);
 void tc2_3d_redraw(void) { if (gpu && win) { const tc2_built *b = tc2_built_latest(); if (b) draw_gpu(b); } }   /* a 3D change shows at once, paused or in the menu */
 /* the GPU picture of b: one, or with 3D the two eyes */
 static void leia_head(void);
+#ifdef _WIN32
+static void look_aim(float *x, float *y);
+#endif
 static void draw_gpu(const tc2_built *b)
 {
     leia_head();
@@ -299,6 +302,9 @@ int tc2_window_open(int scale, int fullscreen)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 640, 480, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
     gpu = tc2_gl_init();
     tc2_3d_look = eng_cfg_int("stereo_look", 0); if (tc2_3d_look < 0 || tc2_3d_look > 200) tc2_3d_look = 0;
+#ifdef _WIN32
+    { extern void (*ss22_gun_adjust)(float *, float *); ss22_gun_adjust = look_aim; }
+#endif
     tc2_3d_duck = eng_cfg_int("stereo_duck", 0); if (tc2_3d_duck < 0 || tc2_3d_duck > 40) tc2_3d_duck = 0;
     st_apply(eng_cfg_int("stereo", 0), eng_cfg_int("stereo_sep", 65), eng_cfg_int("stereo_conv", 400));
     { void tc2_render_soft(int); tc2_render_soft(!gpu); }       /* the worker then only builds the frame; the GPU draws it */
@@ -574,6 +580,16 @@ static void leia_head(void)
     tc2_gl_set_head(h[0], h[1], h[2]);
 }
 int tc2_3d_look_live(void) { return lr.ok && tc2_3d_mode == TC2_3D_LEIA && tc2_3d_look > 0; }
+/* the gun with look-around on: what it points at in the picture the player sees, as the game must read it (src/tc2_gl.c tc2_gl_unlook) */
+static void look_aim(float *x, float *y)
+{
+    if (!tc2_3d_look_live()) return;
+    const float x0 = *x, y0 = *y;
+    if (tc2_gl_unlook(tc2_built_latest(), x, y)) {
+        static unsigned n;
+        if (n++ % 600 == 0) fprintf(stderr, "[LEIA] aim %.3f,%.3f seen -> %.3f,%.3f in the arcade's view\n", x0, y0, *x, *y);
+    }
+}
 static void leia_stop(void)
 {
     if (!lr.ok) return;

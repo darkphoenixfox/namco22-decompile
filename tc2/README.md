@@ -87,7 +87,9 @@ The display's eye tracker can do more than steer the 3D:
 
 - **3D look-around**: moving your head moves the camera with it, the screen acting as a window onto the arcade's view. Lean to see a
   little further round a corner. 0-200 % of your head's movement (100 % = 10 cm of head movement moves the camera 10 cm in the game),
-  capped at 25 cm; if the tracker loses your eyes the view eases back to the arcade's.
+  capped at 25 cm; if the tracker loses your eyes the view eases back to the arcade's. Shots stay true while you lean: the gun's
+  aim is traced into the picture you see and handed to the game as the same spot in the arcade's own view (the crosshair stays where
+  the gun points).
 - **3D duck to take cover**: your head becomes the arcade's foot pedal. Upright = pedal held (out of cover); duck more than the set
   distance (15 cm by default, 5-40 cm) below your upright height = pedal released (take cover, reload). Your upright height is learned
   as you play; ducking out of the tracker's view counts as taking cover. The keys, mouse and gun buttons still work the pedal too.

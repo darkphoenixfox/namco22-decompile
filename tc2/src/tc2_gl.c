@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include "tc2_build.h"
@@ -341,6 +342,72 @@ static int st_flat(const tc2_built *b, const tc2_poly *p)
     return 1;
 }
 
+/* one vertex seen from the moved camera cam (units, arcade camera space: x right, y up, z forward) through the screen rectangle at z0:
+ * in -- its arcade screen place (*sx, *sy board pixels) and depth w; out -- its new screen place and its depth from the moved camera */
+static void st_reproject(const float cam[3], float z0, float f, float pcx, float pcy, float w, float *sx, float *sy, float *d_out)
+{
+    const float a = (*sx - pcx) / f, bb = (pcy - *sy) / f;              /* x / z, y / z (y up) */
+    float d = w - cam[2]; if (d < 0.5f * w) d = 0.5f * w;               /* a head that comes close cannot pass a vertex */
+    const float t = (z0 - cam[2]) / d;
+    *sx = pcx + f * (cam[0] + (a * w - cam[0]) * t) / z0;
+    *sy = pcy - f * (cam[1] + (bb * w - cam[1]) * t) / z0;
+    *d_out = d;
+}
+
+/* AIM UNDER LOOK-AROUND: the gun points at a place in the picture the player sees, drawn from the head's camera; the game scores against
+ * the arcade's own view. (*nx, *ny), fractions of the 4:3 game area as seen, become the place in the arcade's view of the same thing: the
+ * nearest solid world polygon under that point (as drawn from the head's camera, eye 0), its 3D point (perspective-correct across the
+ * polygon), projected by the arcade's camera. Nothing under it (open sky): the point at infinity along that line of sight. 0 = unchanged */
+int tc2_gl_unlook(const tc2_built *b, float *nx, float *ny)
+{
+    if (!b || (st_head[0] == 0 && st_head[1] == 0 && st_head[2] == 0)) return 0;
+    const float z0 = st_conv_cm / 100.0f * ST_UNITS_PER_M, *cam = st_head;
+    const float px = *nx * 640.0f, py = *ny * 480.0f;
+    float best = 0, hit[3] = { 0, 0, 0 }, hf = 0, hcx = 320, hcy = 240;   /* best: 1/depth of the nearest hit; its point and camera */
+    float lf = 0, lcx = 320, lcy = 240;                                    /* a world camera of this frame, for the line of sight */
+    for (int i = 0; i < b->npoly; i++) {
+        const tc2_poly *p = &b->polys[i];
+        if (p->n < 3 || p->blend || st_flat(b, p)) continue;
+        const int cl = (320 - p->vp_size_x) + p->vp_offset_x, ct = (240 - p->vp_size_y) - p->vp_offset_y;
+        if (px < cl || px >= cl + 2 * p->vp_size_x || py < ct || py >= ct + 2 * p->vp_size_y) continue;   /* outside its viewport */
+        const float f = b->fs.list.e[p->entry].vp_fov, pcx = 320.0f + (float)p->vp_offset_x, pcy = 240.0f - (float)p->vp_offset_y;
+        lf = f; lcx = pcx; lcy = pcy;
+        float P[8][3], S[8][2], D[8];
+        float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f;
+        for (int j = 0; j < p->n && j < 8; j++) {
+            const tc2_pvert *v = &p->pv[j];
+            const float w = 1.0f / (v->p[0] != 0 ? v->p[0] : 1e-30f), sx = v->x + (float)cl, sy = v->y + (float)ct;
+            P[j][0] = (sx - pcx) / f * w; P[j][1] = (pcy - sy) / f * w; P[j][2] = w;
+            S[j][0] = sx; S[j][1] = sy; st_reproject(cam, z0, f, pcx, pcy, w, &S[j][0], &S[j][1], &D[j]);
+            if (S[j][0] < x0) x0 = S[j][0]; if (S[j][0] > x1) x1 = S[j][0]; if (S[j][1] < y0) y0 = S[j][1]; if (S[j][1] > y1) y1 = S[j][1];
+        }
+        if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+        const int n = p->n < 8 ? p->n : 8;
+        for (int k = 1; k + 1 < n; k++) {                                 /* the fan, as drawn */
+            const int t[3] = { 0, k, k + 1 };
+            const float ax = S[t[0]][0], ay = S[t[0]][1], bx = S[t[1]][0], by = S[t[1]][1], cx = S[t[2]][0], cy = S[t[2]][1];
+            const float area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+            if (fabsf(area) < 1e-6f) continue;
+            const float l1 = ((px - ax) * (cy - ay) - (cx - ax) * (py - ay)) / area, l2 = ((bx - ax) * (py - ay) - (px - ax) * (by - ay)) / area, l0 = 1 - l1 - l2;
+            if (l0 < -1e-4f || l1 < -1e-4f || l2 < -1e-4f) continue;
+            const float w0 = l0 / D[t[0]], w1 = l1 / D[t[1]], w2 = l2 / D[t[2]], iz = w0 + w1 + w2;   /* perspective-correct weights */
+            if (iz <= best) continue;
+            best = iz;
+            for (int c = 0; c < 3; c++) hit[c] = (w0 * P[t[0]][c] + w1 * P[t[1]][c] + w2 * P[t[2]][c]) / iz;
+            hf = f; hcx = pcx; hcy = pcy;
+        }
+    }
+    float sx, sy;
+    if (best > 0 && hit[2] > 1e-4f) { sx = hcx + hf * hit[0] / hit[2]; sy = hcy - hf * hit[1] / hit[2]; }
+    else if (lf > 0) {                                                    /* the line of sight through the screen place, to infinity */
+        const float qx = (px - lcx) * z0 / lf - cam[0], qy = (lcy - py) * z0 / lf - cam[1], qz = z0 - cam[2];
+        if (qz <= 1e-4f) return 0;
+        sx = lcx + lf * qx / qz; sy = lcy - lf * qy / qz;
+    } else return 0;
+    *nx = sx / 640.0f; *ny = sy / 480.0f;
+    return 1;
+}
+
 /* the frame's polygons as triangles, in draw order: per vertex its clip position (x*w, y*w, 0, w with w = z, so GL interpolates u, v and
  * the shade perspective-correct exactly as the hardware's u/z, v/z, i/z), u v shade, and the polygon's parameters and viewport clip */
 static int fill_vertices(const tc2_built *b)
@@ -373,15 +440,7 @@ static int fill_vertices(const tc2_built *b)
                 const tc2_pvert *v = &p->pv[tri[j]];
                 const float ooz = v->p[0] != 0 ? v->p[0] : 1e-30f, w = 1.0f / ooz;
                 float sx = v->x + (float)cl, sy = v->y + (float)ct, wc = w;
-                if (reproject) {
-                    const float a = (sx - pcx) / f, bb = (pcy - sy) / f;          /* x / z, y / z (y up) */
-                    float d = w - cam[2]; if (d < 0.5f * w) d = 0.5f * w;         /* the depth from the moved camera; a head that comes
-                                                                                   * close cannot pass a vertex */
-                    const float t = (st_z0 - cam[2]) / d;
-                    sx = pcx + f * (cam[0] + (a * w - cam[0]) * t) / st_z0;
-                    sy = pcy - f * (cam[1] + (bb * w - cam[1]) * t) / st_z0;
-                    wc = d;
-                }
+                if (reproject) st_reproject(cam, st_z0, f, pcx, pcy, w, &sx, &sy, &wc);
                 *o++ = ((sx + (float)ex) / (320.0f + (float)ex) - 1.0f) * wc; *o++ = (sy / 240.0f - 1.0f) * wc; *o++ = 0; *o++ = wc;
                 *o++ = v->p[1] * w; *o++ = v->p[2] * w; *o++ = v->p[3] * w;
                 *o++ = (float)p->color_base; *o++ = (float)p->cmode; *o++ = (float)p->tbase; *o++ = flags;

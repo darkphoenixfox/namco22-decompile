@@ -789,6 +789,7 @@ static bool  aim_on;                                    /* the crosshair is on t
 static int   aim_src;                                   /* 0 none yet, 1 mouse, 2 stick / keys */
 bool ss22_input_aim(float *nx, float *ny) { if (!game || !game->light_gun || !aim_on) return false; *nx = aim_x; *ny = aim_y; return true; }
 static float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+void (*ss22_gun_adjust)(float *x, float *y);           /* the host: the aim the game reads, moved (TC2's look-around: src/tc2_window.c); NULL = as aimed */
 static void aim_update(const uint8_t *k)
 {
     static int last_mx = -1, last_my = -1;
@@ -833,8 +834,10 @@ static void aim_update(const uint8_t *k)
     } else if (aim_src == 0) aim_on = false;
     if ((mb_now & SDL_BUTTON_X1MASK) || k[SDL_SCANCODE_R]) aim_on = false;     /* an "aim off-screen" button / key (a reload without moving the gun) */
     g_ss22_gun_off = !aim_on;
-    g_ss22_gun_x = (uint16_t)(TC2_GUN_X0 + aim_x * TC2_GUN_XW);   /* TIME CRISIS 2's port ranges (src/eng/ss22_board.h; TC1's were 68+626 / 43+241) */
-    g_ss22_gun_y = (uint16_t)(TC2_GUN_Y0 + aim_y * TC2_GUN_YH);
+    float gx = aim_x, gy = aim_y;                       /* what the game reads; the crosshair stays at aim_x / aim_y, where the gun points */
+    if (aim_on && ss22_gun_adjust) { ss22_gun_adjust(&gx, &gy); gx = clamp01(gx); gy = clamp01(gy); }
+    g_ss22_gun_x = (uint16_t)(TC2_GUN_X0 + gx * TC2_GUN_XW);   /* TIME CRISIS 2's port ranges (src/eng/ss22_board.h; TC1's were 68+626 / 43+241) */
+    g_ss22_gun_y = (uint16_t)(TC2_GUN_Y0 + gy * TC2_GUN_YH);
     { static int dbg = -1, n; if (dbg < 0) dbg = getenv("SS22_AIMDBG") != NULL;       /* SS22_AIMDBG=1: the aim, once a second */
       if (dbg && ++n % 60 == 0) fprintf(stderr, "[AIM] src %d on %d  norm %.3f,%.3f  port %u,%u  buttons 0x%X%s\n", aim_src, aim_on, aim_x, aim_y, g_ss22_gun_x, g_ss22_gun_y, mb_now, eng_rawptr_selected() >= 0 ? " (device)" : ""); } 
 }
