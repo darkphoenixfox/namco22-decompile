@@ -22,6 +22,8 @@ PLAYING
   Page Up / Page Down / Home    the operator's buttons in the test menu (up / down / enter)
   9                   the service button
   F8                  a white border around the picture, for light guns that need one (Sinden)
+  F9                  3D: off / side by side / cross-eyed / anaglyph / Leia SR display (see 3D below)
+  F10                 3D head tracking: your head's centre is here (Shift+F10: the display's own centre)
   F11                 fullscreen       F12   screenshot (screenshots/)       P   pause
   Esc                 the menu: Display (window size, fullscreen, widescreen, resolution, frame rate), Audio (volume),
                       Controls (rebind keys, mouse and pad buttons), gun options
@@ -31,6 +33,25 @@ RECOIL: the game's gun solenoid is sent out like MAME's network output (tcp 127.
 Hook Of The Reaper can drive a recoil gun; a pad rumbles instead. MAME does not send this signal itself, so Hook of the
 Reaper needs the game file in the hotr folder: copy hotr/timecrs2.txt into its defaultLG folder (hotr/README.txt says more).
 Display > Recoil outputs / Pad rumble on recoil turn each on or off.
+
+3D AND LEIA SR DISPLAYS (SAMSUNG ODYSSEY 3D)
+--------------------------------------------
+Esc > Display > 3D (or F9) shows the arcade's own camera in stereo: side by side (for 3D TVs and displays with a side-by-side
+mode), cross-eyed, red/cyan anaglyph, or "Leia SR display" for glasses-free 3D on a Leia SR display such as the Odyssey 3D.
+  3D depth             the eye separation (65 mm = human eyes; 0 = flat)
+  3D screen distance   how deep the screen surface sits in the scene (4 m); nearer things come out of the screen
+The HUD, text, crosshair, shot marks and menu stay flat on the screen surface. F12 in 3D saves both eyes side by side.
+
+LEIA SR DISPLAY: needs the Leia SR platform (installed with the display's software; the "SR Service" must be running) and
+tc2_leia.dll next to TimeCrisis2.exe (it is in this package). The game moves itself onto the 3D display and weaves the picture
+for your eyes -- the Odyssey 3D Hub's side-by-side conversion is not needed. For a borderless window that other programs can sit
+in front of: Display > Window mode > "Borderless (for 3D apps)".
+Head tracking, with the display's eye tracker (Display page, Leia SR display only):
+  3D look-around        your head moves the camera a little: the screen is a window onto the scene (0-200 %; shots stay true)
+  3D duck to take cover your head is the foot pedal: upright = out of cover, duck (15 cm by default) = take cover and reload
+  F10                   sit as you will play and press it once: that is the centre and your upright height (saved)
+Light gun border: Display > Gun border position "over the 4:3 game" frames exactly the area the gun aims at, without shrinking
+the picture; Left/Right on Gun border sets its thickness (0.5 % steps).
 
 Settings are kept in tc2.cfg, the machine's settings, bookkeeping and rankings in tc2_backup.nv (the arcade board's battery RAM),
 both in the game's folder (Windows: next to the .exe; Linux: ~/.local/share/tc2/). The log of the last start is tc2.log there.
