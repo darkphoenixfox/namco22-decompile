@@ -18,6 +18,7 @@ where a MAME set has since renamed one (see [docs/ROM_CHECKSUMS.md](docs/ROM_CHE
 | **Time Crisis** | 1995 | Playable; mouse or light gun | no | `timecris.zip` | yes | yes |
 | **Ace Driver** | 1994 | Playable; force feedback, developer screens | no | `acedrive.zip` + `namcoc74.zip` | yes | yes |
 | **Cyber Commando** | 1994 | Playable; Japanese version | no | `cybrcomm.zip` + `namcoc74.zip` | yes | yes |
+| **Ridge Racer 2** | 1994 | Playable; widescreen, developer screens | no | `ridgera2.zip` + `namcoc74.zip` | yes | yes |
 
 ### System 21
 
@@ -63,6 +64,10 @@ Cyber Commando:
 
 ![Cyber Commando: a battle in widescreen](docs/images/cybrcomm-gameplay.png)
 
+Ridge Racer 2:
+
+![Ridge Racer 2: the start line](docs/images/ridgera2-gameplay.png)
+
 Cyber Sled:
 
 ![Cyber Sled: a battle, in widescreen](docs/images/cybsled-widescreen.png)
@@ -88,10 +93,10 @@ Each release on the [Releases page](https://github.com/spacestate1/namco22-decom
 | Package | For | How to install |
 |---|---|---|
 | `namco-2x-systems_VERSION_amd64.deb` | Ubuntu 22.04 or newer, Linux Mint 21 or newer, LMDE 6, Debian 12 or newer | `sudo apt install ./namco-2x-systems_*_amd64.deb` |
-| `PropCycle-x86_64.AppImage`, `RaveRacer-...`, `TokyoWars-...`, `DirtDash-...`, `ArmadilloRacing-...`, `TimeCrisis-...`, `AceDriver-...`, `CyberCommando-...`, `CyberSled-...`, `TimeCrisis2-...`, `CrisisZone-...` | **The Steam Deck**, and any 64-bit Linux without installing anything | `chmod +x` the file and run it (on a Deck: Desktop Mode, right-click it > Add to Steam) |
+| `PropCycle-x86_64.AppImage`, `RaveRacer-...`, `TokyoWars-...`, `DirtDash-...`, `ArmadilloRacing-...`, `TimeCrisis-...`, `AceDriver-...`, `CyberCommando-...`, `RidgeRacer2-...`, `CyberSled-...`, `TimeCrisis2-...`, `CrisisZone-...` | **The Steam Deck**, and any 64-bit Linux without installing anything | `chmod +x` the file and run it (on a Deck: Desktop Mode, right-click it > Add to Steam) |
 | `windows-release-VERSION.zip` | Windows 10 or 11, 64-bit | Unzip it anywhere, put the game zips in its `roms` folder, double-click the game's `.exe` |
 
-On Linux, start a game from the applications menu (or type `propcycle`, `raveracer`, `tokyowars`, `dirtdash`, `armadilloracing`, `timecrisis`, `acedriver`, `cybercommando`, `cybersled`, `timecrisis2` or `crisiszone`). The first time, it makes the folder
+On Linux, start a game from the applications menu (or type `propcycle`, `raveracer`, `tokyowars`, `dirtdash`, `armadilloracing`, `timecrisis`, `acedriver`, `cybercommando`, `ridgeracer2`, `cybersled`, `timecrisis2` or `crisiszone`). The first time, it makes the folder
 `~/.local/share/namco-2x-systems/<game>/roms`, tells you which zip is missing and copies any it finds in `~/Downloads`. To uninstall: `sudo apt remove namco-2x-systems`
 your game files, settings and scores stay in `~/.local/share/namco-2x-systems/`.
 **Upgrading from 0.6 or older:** the package was called `namco22`; the new one replaces it, and the games keep using your old
@@ -149,6 +154,11 @@ and checked, piece by piece, against the arcade machine running in
 - **Cyber Commando**: the Rave Racer board again, one table (`cybrcomm/src/cc_game.c`) plus a twin-stick mode in the shared
   code; its program (`cybrcomm/gen/rr_lifted.c`) was checked instruction by instruction against MAME over a whole played game
   (162 million instructions), and its DSP and sound translations against the interpreters they were made from.
+- **Ridge Racer 2**: the Rave Racer board again, one table (`ridgera2/src/r2_game.c`); its program (`ridgera2/gen/rr_lifted.c`) was
+  checked instruction by instruction against MAME over the first 300 attract frames, and its DSP and sound translations against the
+  interpreters they were made from (attract, a race and the test-mode pages, byte-identical). The **Debug** page of its menu launches
+  the developer menu left in the game (SELECT MODE: object viewer, colour bars, switch / RAM / area / sound tests) and the hidden
+  ADJUSTMENT screen. Force feedback and link play are not done yet.
 - **Cyber Sled**: a Namco **System 21** board (two 68000s, five C67 DSPs for the 3D, a 6809 sound CPU, a C68 I/O controller).
   Both 68000 programs are translated by the same tool (`cybsled/gen/cm_lifted.c`, `cs_lifted.c`) and were checked
   instruction by instruction against MAME's; the five DSP programs, the sound program and the I/O program are turned into
@@ -201,13 +211,14 @@ adillor/build.sh ~/Downloads/adillor.zip                                   # Arm
 timecris/build.sh ~/Downloads/timecris.zip                                 # Time Crisis
 acedriver/build.sh ~/Downloads/acedrive.zip ~/Downloads/namcoc74.zip       # Ace Driver
 cybrcomm/build.sh ~/Downloads/cybrcomm.zip ~/Downloads/namcoc74.zip        # Cyber Commando
+ridgera2/build.sh ~/Downloads/ridgera2.zip ~/Downloads/namcoc74.zip        # Ridge Racer 2
 cybsled/build.sh ~/Downloads/cybsled.zip ~/Downloads/namcoc67.zip ~/Downloads/namcoc68.zip   # Cyber Sled
 tc2/build.sh ~/Downloads/timecrs2.zip                                                    # Time Crisis 2 (then tc2/launch.sh)
 crszone/build.sh ~/Downloads/crszone.zip                                                 # Crisis Zone (then crszone/launch.sh)
 ```
 
-Rave Racer's, Tokyo Wars', Dirt Dash's, Armadillo Racing's, Time Crisis', Ace Driver's, Cyber Commando's and Cyber Sled's first builds take a few minutes
-(Cyber Commando's needs about 4.5 GB of free memory).
+Rave Racer's, Tokyo Wars', Dirt Dash's, Armadillo Racing's, Time Crisis', Ace Driver's, Cyber Commando's, Ridge Racer 2's and Cyber Sled's first builds take a few minutes
+(Cyber Commando's needs about 4.5 GB of free memory; give Ridge Racer 2 the same, or build it with `JOBS=1`).
 
 Then play:
 
@@ -220,6 +231,7 @@ Then play:
 ./launch.sh tc        # Time Crisis (the mouse is the gun)
 ./launch.sh ad        # Ace Driver
 ./launch.sh cc        # Cyber Commando
+./launch.sh r2        # Ridge Racer 2
 ./launch.sh cs        # Cyber Sled
 ./launch.sh           # the list of games and options
 ```
@@ -235,8 +247,8 @@ All the games run on Windows. The Windows version is built from Linux. Type:
 This makes a `windows-release` folder. Copy it to the Windows computer.
 Put the game files in its `roms` folder: `propcycl.zip` for Prop Cycle,
 `raverace.zip` and `namcoc74.zip` for Rave Racer, `tokyowar.zip` for Tokyo
-Wars, `dirtdash.zip` for Dirt Dash, `adillor.zip` for Armadillo Racing, `timecris.zip` for Time Crisis, `acedrive.zip` and `namcoc74.zip` for Ace Driver, `cybrcomm.zip` and `namcoc74.zip` for Cyber Commando, `cybsled.zip`, `namcoc67.zip` and `namcoc68.zip` for Cyber Sled, `timecrs2.zip` for Time Crisis II, `crszone.zip` for Crisis Zone.
-Then double-click **PropCycle.exe**, **RaveRacer.exe**, **TokyoWars.exe**, **DirtDash.exe**, **ArmadilloRacing.exe**, **TimeCrisis.exe**, **AceDriver.exe**, **CyberCommando.exe**, **CyberSled.exe**, **TimeCrisis2.exe** or **CrisisZone.exe**.
+Wars, `dirtdash.zip` for Dirt Dash, `adillor.zip` for Armadillo Racing, `timecris.zip` for Time Crisis, `acedrive.zip` and `namcoc74.zip` for Ace Driver, `cybrcomm.zip` and `namcoc74.zip` for Cyber Commando, `ridgera2.zip` and `namcoc74.zip` for Ridge Racer 2, `cybsled.zip`, `namcoc67.zip` and `namcoc68.zip` for Cyber Sled, `timecrs2.zip` for Time Crisis II, `crszone.zip` for Crisis Zone.
+Then double-click **PropCycle.exe**, **RaveRacer.exe**, **TokyoWars.exe**, **DirtDash.exe**, **ArmadilloRacing.exe**, **TimeCrisis.exe**, **AceDriver.exe**, **CyberCommando.exe**, **RidgeRacer2.exe**, **CyberSled.exe**, **TimeCrisis2.exe** or **CrisisZone.exe**.
 
 Building on Windows itself, and what in the code is there for Windows only:
 [docs/WINDOWS.md](docs/WINDOWS.md).
@@ -351,6 +363,12 @@ drive (both sticks: Up / Down forward / back, Left / Right turn, Shift + Left / 
 pad the two sticks are the cabinet's two sticks, A / RT gun, B / LT missile, Y view. Everything can be changed in the menu
 (**Controls**, see [Two sticks](#two-sticks-cyber-sled-and-cyber-commando)); settings live in `cybrcomm/cc_controls.cfg`.
 
+**Ridge Racer 2.** `5` coin (a game costs three), `X` / Up gas -- it also confirms in the menus, as the cabinet has no Start
+button -- `Z` / Down brake, Left / Right steer, `A` / `S` shift down / up, `F2` test mode (a switch: press again to leave), `9` service,
+`Esc` menu (**Display** incl. widescreen, **Audio**, **Controls**, and **Debug**: the game's developer screens), `F12` screenshot. On a
+pad: left stick steer, A gas, B brake, the shoulders shift, Back coin, Start or R3 the menu. Settings live in
+`ridgera2/r2_controls.cfg`, the operator settings and records in `ridgera2/r2_eeprom.nv`.
+
 **Cyber Sled.** A tank battle with two levers. `5` coin, `1` / Enter start, the arrow keys drive (both levers: Up / Down
 forward / back, Left / Right turn on the spot, Shift + Left / Right strafe), `E` / `D` / `S` / `F` and `I` / `K` / `J` / `L` move the
 left and right lever on their own, `Z` gun, `X` missile, `C` view, `F2` test mode, `Esc` menu. On a pad the two sticks are the two
@@ -452,7 +470,7 @@ Press `Esc` and open **Display**. Your choices are saved by themselves.
 - **"can't be used"**: the zip is the wrong game or version (compare your files with
   [docs/ROM_CHECKSUMS.md](docs/ROM_CHECKSUMS.md)). Prop Cycle
   needs the one called `propcycl`; Rave Racer needs `raverace` and
-  `namcoc74`; Tokyo Wars needs `tokyowar`; Dirt Dash needs `dirtdash`; Armadillo Racing needs `adillor` (World, AM2 Ver.A); Time Crisis needs `timecris` (World, TS2 Ver.B); Ace Driver needs `acedrive` (World, AD2) and `namcoc74`; Cyber Commando needs `cybrcomm` (Japan, CY1) and `namcoc74`; Cyber Sled needs `cybsled` (World, CY2), `namcoc67` and `namcoc68`; Time Crisis II needs `timecrs2` (US, TSS3 Ver.B); Crisis Zone needs `crszone` (World, CSZO4 Ver.B).
+  `namcoc74`; Tokyo Wars needs `tokyowar`; Dirt Dash needs `dirtdash`; Armadillo Racing needs `adillor` (World, AM2 Ver.A); Time Crisis needs `timecris` (World, TS2 Ver.B); Ace Driver needs `acedrive` (World, AD2) and `namcoc74`; Cyber Commando needs `cybrcomm` (Japan, CY1) and `namcoc74`; Ridge Racer 2 needs `ridgera2` (World, RRS2) and `namcoc74`; Cyber Sled needs `cybsled` (World, CY2), `namcoc67` and `namcoc68`; Time Crisis II needs `timecrs2` (US, TSS3 Ver.B); Crisis Zone needs `crszone` (World, CSZO4 Ver.B).
 - **"still missing dt2vera.1"** (Dirt Dash): the program chips `dt2vera.1` and `dt2vera.2` were not found
   in `dirtdash.zip`. They can be at the top of the zip, in a `dirtdasha/` folder or in any other folder, or
   in a separate `dirtdasha.zip` beside it. If the message says the chip "cannot be used", it says why (wrong
@@ -460,7 +478,7 @@ Press `Esc` and open **Display**. Your choices are saved by themselves.
 - **"c71.bin is missing"**: that message is from an older version. The DSP's BIOS is built in now, so
   `c71.bin` and `namcoc71.zip` are not needed; update to a current build.
 - **Black or white screen**: update your graphics driver.
-- **Slow, or the picture stutters.** Open the game's log (`raveracer.log`, `tokyowar.log`, `dirtdash.log`, `adillor.log`, `timecris.log`, `acedriver.log`, `cybrcomm.log`, `tc2.log`, `crszone.log`,
+- **Slow, or the picture stutters.** Open the game's log (`raveracer.log`, `tokyowar.log`, `dirtdash.log`, `adillor.log`, `timecris.log`, `acedriver.log`, `cybrcomm.log`, `ridgeracer2.log`, `tc2.log`, `crszone.log`,
   `propcycl.log` beside the `.exe` on Windows; the terminal window on Linux) and look at these lines:
   - `[HOST] OpenGL: ...` (Prop Cycle: `OpenGL: ...`) names the graphics chip the game is using. It should be
     your graphics card, for example *NVIDIA GeForce RTX 3050 Ti*. If a laptop with **two** graphics chips shows the

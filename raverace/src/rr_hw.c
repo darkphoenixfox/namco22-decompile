@@ -101,6 +101,7 @@ bool rr_hw_init(const char *rom_dir)
     memset(&g_hw, 0, sizeof g_hw);
     g_hw.lcg = 0x2545F491u;
     g_hw.dsw = 0xFFFFFFFFu;             /* every DIP off */
+    { const char *e = getenv("RR_DSW"); if (e) g_hw.dsw = (uint32_t)strtoul(e, NULL, 16); }   /* test: the DIP switches (hex, active low) */
     g_hw.portbits[0] = g_hw.portbits[1] = 0xFFFF;
     g_hw.steer = 0x800; g_hw.gas = 0; g_hw.brake = 0; g_hw.adc[0] = g_hw.adc[1] = g_hw.adc[2] = g_hw.adc[3] = 0x7F; g_hw.inputs = g_rr_game->inputs_idle;   /* MAME default: active-low bits 1 (Rave Racer: cabinet field 0x2100 = 0x2000, Standard) */
     char p[1024];
@@ -183,11 +184,12 @@ static void eeprom_block_set(uint32_t blk, int byte, uint8_t v)
 }
 void rr_hw_set_freeplay(bool on)
 {
+    if (g_rr_game->freeplay_set) { g_rr_game->freeplay_set(on); return; }
     eeprom_block_set(0x280, 3, on ? 1 : 0);
     eeprom_block_set(0x2A0, 3, on ? 1 : 0);
     g_rr.wram[0x1043] = on ? 1 : 0;
 }
-bool rr_hw_freeplay(void) { return g_rr.wram[0x1043] != 0; }
+bool rr_hw_freeplay(void) { return g_rr_game->freeplay_get ? g_rr_game->freeplay_get() : g_rr.wram[0x1043] != 0; }
 /* GitHub #35: is the game on one of its wheel-position selection screens (rr_game_t.select_addr / select_vals)? */
 bool rr_hw_select_screen(void)
 {
@@ -256,6 +258,7 @@ void rr_hw_set_steering_motor(bool on)
  * old id. */
 void rr_hw_set_link_cabinet(int n)
 {
+    if (g_rr_game->link_cabinet_set) { g_rr_game->link_cabinet_set(n & 7); return; }
     n &= 7;
     eeprom_block_set(0x2C0, 0, (uint8_t)n);
     eeprom_block_set(0x2E0, 0, (uint8_t)n);

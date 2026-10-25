@@ -13,6 +13,7 @@
 #   ./launch.sh tc           Time Crisis (add a number for the window size: tc 2) -- the mouse is the gun
 #   ./launch.sh ad           Ace Driver (add a number for the window size: ad 3)
 #   ./launch.sh cc           Cyber Commando (add a number for the window size: cc 3)
+#   ./launch.sh r2           Ridge Racer 2 (add a number for the window size: r2 3)
 #   ./launch.sh cs           Cyber Sled (add a number for the window size: cs 2)
 #
 # Prop Cycle keys:  5 coin, Enter start, arrow keys steer, Space pedal,
@@ -31,6 +32,9 @@
 #                   V view, F2 test switch, Esc menu (Debug: developer screens), F12 picture.
 # Cyber Commando keys: 5 coin (a game costs two), arrow keys drive (Shift + Left/Right strafe), E/D/S/F + I/K/J/L the two
 #                   sticks, Z gun, X missile, C view, F2 test switch, Esc menu, F12 picture. (Cyber Sled's layout.)
+# Ridge Racer 2 keys: 5 coin (a game costs three), X or Up gas (also confirms: no Start button), Z or Down brake,
+#                   Left/Right steer, A/S shift, F2 test switch, 9 service, Esc menu (Debug: developer screens), F12 picture.
+#                   Pad: left stick steer, A gas, B brake, shoulders shift, Back coin, Start or R3 menu.
 # Cyber Sled keys:  5 coin, 1/Enter start, arrow keys drive, E/D/S/F + I/K/J/L the two levers, Z gun, X missile,
 #                   C view, F2 test switch, Esc menu (Online: play against a friend), F12 picture.
 set -e
@@ -145,6 +149,17 @@ case "$game" in
         fi
         exec ./build/cc extracted "$@"
         ;;
+    r2|ridgera2|ridgeracer2|rr2)
+        if [ ! -f ridgera2/build/CMakeCache.txt ]; then
+            echo "Ridge Racer 2 is not built yet. Run:  ridgera2/build.sh /path/to/ridgera2.zip /path/to/namcoc74.zip"; exit 1
+        fi
+        rebuild ridgera2 r2
+        cd ridgera2
+        if [ $# -eq 0 ] || [[ "$1" =~ ^[0-9]+$ ]]; then
+            exec ./build/r2 extracted --window ${1:+"$1"}
+        fi
+        exec ./build/r2 extracted "$@"
+        ;;
     cs|cybsled|cybersled)
         if [ ! -f cybsled/build/CMakeCache.txt ]; then
             echo "Cyber Sled is not built yet. Run:  cybsled/build.sh /path/to/cybsled.zip /path/to/namcoc67.zip /path/to/namcoc68.zip"; exit 1
@@ -161,6 +176,6 @@ case "$game" in
         exec ./build/cs21 extracted "$@"
         ;;
     *)
-        sed -n '2,35p' "$0" | sed 's/^# \?//'
+        sed -n '2,39p' "$0" | sed 's/^# \?//'
         ;;
 esac

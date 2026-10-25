@@ -19,7 +19,7 @@ Get-FileHash -Algorithm MD5 *
 (or `certutil -hashfile <file> MD5` for one file), and compare with the table. The **CRC32** column is the one MAME's own
 ROM lists show.
 
-Rave Racer's, Ace Driver's and Cyber Commando's `c74.bin` (the sound chip's BIOS) comes from `namcoc74.zip`. The DSP's BIOS, `c71.bin` (MAME's `namcoc71`), is built into every System 22 game and
+Rave Racer's, Ace Driver's, Cyber Commando's and Ridge Racer 2's `c74.bin` (the sound chip's BIOS) comes from `namcoc74.zip`. The DSP's BIOS, `c71.bin` (MAME's `namcoc71`), is built into every System 22 game and
 is not needed; if you have it, its MD5 is `223914888d9be9ffe07952d9aa4c4107` (CRC32 `47c623ab`).
 
 ## Prop Cycle
@@ -317,6 +317,38 @@ MAME set: `cybrcomm` (Japan, CY1) and `namcoc74`. Unpacked chips end up in `cybr
 | `rr1gam.2d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
 | `rr1gam.3d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
 | `rr1gam.4d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
+
+## Ridge Racer 2
+
+MAME set: `ridgera2` (World, RRS2) and `namcoc74`. Unpacked chips end up in `ridgera2/extracted/`. 25 files.
+
+| File | Size | MD5 | CRC32 |
+|---|---:|---|---|
+| `c74.bin` | 16384 | `c78a2c4d6071a227e6d49bc009ef7600` | `a3dce360` |
+| `rr1gam.2d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
+| `rr1gam.3d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
+| `rr1gam.4d` | 256 | `8554aa5b8d9b2bfac5222d3391de25f0` | `b2161bce` |
+| `rrs1ccrh.5c` | 524288 | `bd8f35fc178af5291699692ae0361532` | `bd3c86ab` |
+| `rrs1ccrl.5a` | 2097152 | `bb1c3638381883609a51a511c707da6b` | `304a8b57` |
+| `rrs1cg0.1a` | 2097152 | `befecfc0b75b3e1190164d6afdcce079` | `714c0091` |
+| `rrs1cg1.2a` | 2097152 | `c2ae0da7518511b0e9ad86ba31469844` | `836545c1` |
+| `rrs1cg2.3a` | 2097152 | `ca8efdddabf28808292db41b4ae5735b` | `00e9799d` |
+| `rrs1cg3.5a` | 2097152 | `54921ec062f234acfc0dc24799d388d7` | `3858983f` |
+| `rrs1data.6r` | 524288 | `e3c36a75ace5a3213a1996590e50794e` | `b7063aa8` |
+| `rrs1pol0.5b` | 524288 | `5e9bf8c867a9e9a275fef44f2fec2807` | `9376c384` |
+| `rrs1pol1.4b` | 524288 | `72b80c533b294f0ff27b2b808226e4e3` | `094fa832` |
+| `rrs1pom0.5c` | 524288 | `a9885cb3e64cb36227c7409c3a064e09` | `b47a7f8b` |
+| `rrs1pom1.4c` | 524288 | `2e7c2a7ba26c95816d5fd8cf78f9bd4e` | `27260361` |
+| `rrs1pou0.5d` | 524288 | `d246eae609330245a61967c6b0695ca7` | `74d6ec84` |
+| `rrs1pou1.4d` | 524288 | `ad04db595df6939c955b4952ff019774` | `f527caaa` |
+| `rrs1wav0.10r` | 1048576 | `d25f058bc3c48458938ac25b298721d9` | `99d11a2d` |
+| `rrs1wav1.10p` | 1048576 | `fb115463eba9435650474d0ae167cfcf` | `ad28444a` |
+| `rrs1wav2.10n` | 1048576 | `73c8c196d3d3e568b90425247316978d` | `6f0d4619` |
+| `rrs1wav3.10l` | 1048576 | `22a82a6fc017bb8d7c6b3384386243d4` | `106e761f` |
+| `rrs2_prgll.4d` | 524288 | `a0f696df38f666bd6ea67dcd7a811289` | `88199c0f` |
+| `rrs2_prglm.2d` | 524288 | `6cf2fe15c5699c97f7e1d2ad2c407e9b` | `8e86f199` |
+| `rrs2_prgum.8d` | 524288 | `6353961b75b8a608ad5bf9dc542e6ba5` | `78c360b6` |
+| `rrs2_prguu.6d` | 524288 | `c9488dad6c3ca64afc02d62a43882a8c` | `60d6d4a4` |
 
 ## Cyber Sled
 

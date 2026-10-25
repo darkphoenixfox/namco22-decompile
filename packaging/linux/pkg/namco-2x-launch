@@ -8,6 +8,7 @@
 #   namco-2x-launch tc [1-9] [args]       Time Crisis (a number = window scale; the mouse is the gun)
 #   namco-2x-launch ace [1-9] [args]      Ace Driver (a number = window scale)
 #   namco-2x-launch cc [1-9] [args]       Cyber Commando (a number = window scale)
+#   namco-2x-launch r2 [1-9] [args]       Ridge Racer 2 (a number = window scale)
 #   namco-2x-launch cs [1-9] [args]       Cyber Sled (a number = window scale)
 #   namco-2x-launch tc2 [1-9] [args]      Time Crisis 2 (a number = window scale; the mouse is the gun)
 #   namco-2x-launch csz [1-9] [args]      Crisis Zone (a number = window scale; the mouse is the gun)
@@ -31,10 +32,11 @@ case "$game" in
     tc|timecris|timecrisis|crisis) title="Time Crisis"; dir=timecris; zips="timecris.zip" ;;
     ace|acedriver|ad) title="Ace Driver"; dir=acedriver; zips="acedrive.zip namcoc74.zip" ;;
     cc|cybrcomm|cybercommando|commando) title="Cyber Commando"; dir=cybrcomm; zips="cybrcomm.zip namcoc74.zip" ;;
+    r2|ridgera2|ridgeracer2|rr2) title="Ridge Racer 2"; dir=ridgera2; zips="ridgera2.zip namcoc74.zip" ;;
     cs|cybsled|cybersled|sled) title="Cyber Sled"; dir=cybsled; zips="cybsled.zip namcoc67.zip namcoc68.zip" ;;
     tc2|timecrs2|timecrisis2|crisis2) title="Time Crisis 2"; dir=tc2; zips="timecrs2.zip"; extra="namco_tssio.zip" ;;
     csz|crszone|crisiszone|zone) title="Crisis Zone"; dir=crszone; zips="crszone.zip"; extra="namco_csz1.zip" ;;
-    *) sed -n '2,18p' "$0" | sed 's/^# \?//'; exit 1 ;;
+    *) sed -n '2,19p' "$0" | sed 's/^# \?//'; exit 1 ;;
 esac
 # $APPIMAGE is the .AppImage's own path (set by the AppImage runtime, also with --appimage-extract-and-run)
 appdir=""; [ -n "${APPIMAGE:-}" ] && appdir=$(dirname "$APPIMAGE")
@@ -140,6 +142,11 @@ case "$dir" in
             exec "$LIB/cc" extracted --window ${1:+"$1"}
         fi
         exec "$LIB/cc" extracted "$@" ;;
+    ridgera2)
+        if [ $# -eq 0 ] || expr "$1" : '[1-9]$' >/dev/null; then
+            exec "$LIB/r2" extracted --window ${1:+"$1"}
+        fi
+        exec "$LIB/r2" extracted "$@" ;;
     cybsled)
         if [ $# -eq 0 ] || expr "$1" : '[1-9]$' >/dev/null; then
             exec "$LIB/cs21" extracted --window ${1:+"$1"}

@@ -170,6 +170,20 @@ It checks all 29 chip files by name, size and CRC and copies them into `cybrcomm
 `cy1prguu.6d` .. `cy1prgll.4d`, interleaved into `cybrcomm_main.bin`. The installed packages and the Windows version do this themselves
 the first time the game starts, from the two zips in the game's `roms` folder. Compare your files with [ROM_CHECKSUMS.md](ROM_CHECKSUMS.md).
 
+## Ridge Racer 2
+
+Ridge Racer 2 needs two MAME sets: `ridgera2.zip` (Ridge Racer 2, World RRS2) and `namcoc74.zip` (the sound CPU's BIOS, `c74.bin` --
+the same file Rave Racer, Ace Driver and Cyber Commando use). It is the same board as Ace Driver and uses Ace Driver's unpacker:
+
+```bash
+ridgera2/build.sh /path/to/ridgera2.zip /path/to/namcoc74.zip
+# (it runs: python3 acedriver/tools/setup_roms.py --game ridgera2 <zips>)
+```
+
+It checks all 25 chip files by name, size and CRC and copies them into `ridgera2/extracted/`; the 68020 program is the four chips
+`rrs2_prguu.6d` .. `rrs2_prgll.4d`, interleaved into `ridgera2_main.bin`. The installed packages and the Windows version do this themselves
+the first time the game starts, from the two zips in the game's `roms` folder. Compare your files with [ROM_CHECKSUMS.md](ROM_CHECKSUMS.md).
+
 ## Cyber Sled
 
 Cyber Sled (Namco System 21) needs three MAME sets: `cybsled.zip` (Cyber Sled, World CY2), `namcoc67.zip` (`c67.bin`, the internal

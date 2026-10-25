@@ -11,7 +11,7 @@ enum { RR_COIN1, RR_COIN2, RR_SERVICE, RR_TEST, RR_SHIFT_DOWN, RR_SHIFT_UP, RR_V
 #define RR_MAXKEYS 4
 typedef struct { SDL_Scancode keys[RR_MAXKEYS]; int nkeys; SDL_GameControllerButton pad; } rr_bind_t;
 extern rr_bind_t g_bind[RR_ACT_N];
-extern int g_steer_speed, g_steer_return, g_pad_deadzone, g_cfg_freeplay;
+extern int g_steer_speed, g_steer_return, g_pad_deadzone, g_cfg_freeplay, g_cfg_car;
 extern int g_cfg_ffb_strength, g_cfg_ffb_invert;
 #define RR_STICK_N 4                      /* Controls > Stick steering (GitHub #42): the gamepad stick's response curve */
 extern const char *const g_stick_steer_name[RR_STICK_N];

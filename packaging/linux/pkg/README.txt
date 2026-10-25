@@ -1,6 +1,6 @@
-Namco 2x Systems: Prop Cycle, Rave Racer, Tokyo Wars, Dirt Dash, Armadillo Racing, Time Crisis, Ace Driver, Cyber Commando, Cyber Sled, Time Crisis 2 and Crisis Zone
+Namco 2x Systems: Prop Cycle, Rave Racer, Tokyo Wars, Dirt Dash, Armadillo Racing, Time Crisis, Ace Driver, Cyber Commando, Ridge Racer 2, Cyber Sled, Time Crisis 2 and Crisis Zone
 -- decompiled engines for the Namco System 21 / 22 / 23 arcade games
-(Cyber Sled runs on Namco System 21, Time Crisis 2 and Crisis Zone on System 23; the other eight on System 22 / Super System 22)
+(Cyber Sled runs on Namco System 21, Time Crisis 2 and Crisis Zone on System 23; the other nine on System 22 / Super System 22)
 =============================================================================================================================
 
 WHERE THE ROMS GO  (do this after installing)
@@ -19,6 +19,8 @@ YOUR home folder at exactly these paths:
                 ~/.local/share/namco-2x-systems/acedriver/roms/namcoc74.zip
   Cyber Commando: ~/.local/share/namco-2x-systems/cybrcomm/roms/cybrcomm.zip
                 ~/.local/share/namco-2x-systems/cybrcomm/roms/namcoc74.zip
+  Ridge Racer 2: ~/.local/share/namco-2x-systems/ridgera2/roms/ridgera2.zip
+                ~/.local/share/namco-2x-systems/ridgera2/roms/namcoc74.zip
   Cyber Sled:   ~/.local/share/namco-2x-systems/cybsled/roms/cybsled.zip
                 ~/.local/share/namco-2x-systems/cybsled/roms/namcoc67.zip
                 ~/.local/share/namco-2x-systems/cybsled/roms/namcoc68.zip
@@ -33,7 +35,7 @@ folder, tells you what is missing and opens the folder; copy the zip(s) in and
 start it again. Zips already in ~/Downloads are picked up automatically.
 (~/.local is a hidden folder: in a file manager press Ctrl+H to see it.)
 From a terminal:
-  mkdir -p ~/.local/share/namco-2x-systems/propcycle/roms ~/.local/share/namco-2x-systems/raverace/roms ~/.local/share/namco-2x-systems/tokyowar/roms ~/.local/share/namco-2x-systems/dirtdash/roms ~/.local/share/namco-2x-systems/adillor/roms ~/.local/share/namco-2x-systems/timecris/roms ~/.local/share/namco-2x-systems/acedriver/roms ~/.local/share/namco-2x-systems/cybrcomm/roms ~/.local/share/namco-2x-systems/cybsled/roms ~/.local/share/namco-2x-systems/tc2/roms ~/.local/share/namco-2x-systems/crszone/roms
+  mkdir -p ~/.local/share/namco-2x-systems/propcycle/roms ~/.local/share/namco-2x-systems/raverace/roms ~/.local/share/namco-2x-systems/tokyowar/roms ~/.local/share/namco-2x-systems/dirtdash/roms ~/.local/share/namco-2x-systems/adillor/roms ~/.local/share/namco-2x-systems/timecris/roms ~/.local/share/namco-2x-systems/acedriver/roms ~/.local/share/namco-2x-systems/cybrcomm/roms ~/.local/share/namco-2x-systems/ridgera2/roms ~/.local/share/namco-2x-systems/cybsled/roms ~/.local/share/namco-2x-systems/tc2/roms ~/.local/share/namco-2x-systems/crszone/roms
   cp propcycl.zip ~/.local/share/namco-2x-systems/propcycle/roms/
   cp raverace.zip namcoc74.zip ~/.local/share/namco-2x-systems/raverace/roms/
   cp tokyowar.zip ~/.local/share/namco-2x-systems/tokyowar/roms/
@@ -42,6 +44,7 @@ From a terminal:
   cp timecris.zip ~/.local/share/namco-2x-systems/timecris/roms/
   cp acedrive.zip namcoc74.zip ~/.local/share/namco-2x-systems/acedriver/roms/
   cp cybrcomm.zip namcoc74.zip ~/.local/share/namco-2x-systems/cybrcomm/roms/
+  cp ridgera2.zip namcoc74.zip ~/.local/share/namco-2x-systems/ridgera2/roms/
   cp cybsled.zip namcoc67.zip namcoc68.zip ~/.local/share/namco-2x-systems/cybsled/roms/
   cp timecrs2.zip ~/.local/share/namco-2x-systems/tc2/roms/
   cp crszone.zip ~/.local/share/namco-2x-systems/crszone/roms/
@@ -82,6 +85,10 @@ Cyber Commando: Cyber Sled's layout -- 5 coin (a game costs two), arrow keys dri
              I/K/J/L the two sticks, Z gun, X missile, C view, F2 test switch, Esc menu, F12 picture.
              Pad: the two sticks are the cabinet's two sticks, A gun, B missile, Y view. Esc -> Controls binds every direction of
              both sticks and every button to keys, a pad or two joysticks.   `cybercommando 2` = window scale 2.
+Ridge Racer 2: 5 coin (a game costs three), X or Up gas (it also confirms in the menus: there is no Start button), Z or Down
+             brake, Left/Right steer, A/S shift down / up, F2 test switch, 9 service, Esc menu (Display incl. widescreen,
+             Audio, Controls; Debug: the game's developer screens), F12 picture.
+             Pad: left stick steer, A gas, B brake, shoulders shift, Back coin, Start or R3 menu.   `ridgeracer2 2` = window scale 2.
 Cyber Sled:  5 coin, 1 / Enter start, arrow keys drive (Shift + Left/Right strafe), E/D/S/F + I/K/J/L the two levers,
              Z gun, X missile, C view, F2 test switch, Esc menu (Online: a battle against a friend; Debug), F12 picture.
              Pad: the two sticks are the two levers, A gun, B missile, Y view. Esc -> Controls binds every direction of both

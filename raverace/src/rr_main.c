@@ -207,9 +207,38 @@ void rr_debug_launch(int i)
  * change the screen goes in anyway. */
 static void debug_boundary(void)
 {
-    { static int at = -2, idx; if (at == -2) { const char *e = getenv("RR_DEBUG"); at = -1; if (e && sscanf(e, "%d@%d", &idx, &at) != 2) at = -1; }
-      if (at >= 0 && frame == (uint32_t)at) rr_debug_launch(idx); }
+    { static const char *e; static int init;           /* RR_DEBUG=i@frame[,i@frame...]: launch Debug-page entries headlessly */
+      if (!init) { init = 1; e = getenv("RR_DEBUG"); }
+      for (const char *p = e; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL) {
+          int idx, at; if (sscanf(p, "%d@%d", &idx, &at) == 2 && frame == (uint32_t)at) rr_debug_launch(idx);
+      } }
     if (debug_pending < 0 || rr_in_irq) return;
+    if (g_rr_game->debug_dsw) {                         /* a menu behind a DIP switch (rr_game.h debug_dsw) */
+        const rr_debug_t *d = &g_rr_game->debug[debug_pending];
+        if (d->entry == DEBUG_DSW_LEAVE) {
+            g_hw.dsw |= g_rr_game->debug_dsw; debug_pending = -1;
+            fprintf(stderr, "[DEBUG] DIP switch off at frame %u: back to the game\n", frame); return;
+        }
+        if (!debug_test_at) {
+            g_hw.dsw &= ~g_rr_game->debug_dsw;
+            if (windowed) rr_host_set_test(false);      /* the developer menu runs only with the Test switch OFF */
+            else g_hw.inputs |= 0x0400;
+            debug_test_at = frame;
+            fprintf(stderr, "[DEBUG] DIP switch on at frame %u\n", frame);
+            if (!d->entry) debug_pending = -1;
+            return;
+        }
+        if (rr_read(g_rr_game->debug_mode_addr, 2) != g_rr_game->debug_mode ||
+            rr_read(g_rr_game->debug_state_addr, 2) != g_rr_game->debug_menu_state) {
+            if (frame > debug_test_at + 600) { debug_pending = -1; fprintf(stderr, "[DEBUG] the menu never came up\n"); }
+            return;
+        }
+        rr_write(g_rr_game->debug_cursor_addr, 2, (d->entry - 1) / 2);
+        rr_write(g_rr_game->debug_state_addr, 2, d->entry);
+        fprintf(stderr, "[DEBUG] \"%s\" selected (state %u) at frame %u\n", d->name, d->entry, frame);
+        debug_pending = -1;
+        return;
+    }
     if (!debug_test_at) {
         g_hw.inputs &= (uint16_t)~0x0400;               /* the Test switch ON (headless; a window's host keeps it on) */
         if (windowed) rr_host_set_test(true);
@@ -346,6 +375,11 @@ void rr_tick(void)
      * whose handler rewinds the program's cooperative task list (Ace Driver: the pointer at A6-0x7FD0) -- launched before it,
      * the screen's first yield (0x4C6E) read past the end of the list and jumped to 0 */
     debug_boundary();
+    if (g_rr_game->ffb_synth) {                         /* RR_FFBLOG=<file>: the synthesised wheel force per frame (headless never drives a wheel) */
+        static FILE *fl; static int init;
+        if (!init) { init = 1; const char *e = getenv("RR_FFBLOG"); if (e) fl = fopen(e, "w"); }
+        if (fl) fprintf(fl, "%u %.3f %u\n", frame, g_rr_game->ffb_synth(), g_hw.steer);
+    }
     if (dump_dir) {             /* RR_DUMP_EVERY=n (default 60), RR_DUMP_FROM=f: dump cadence */
         static unsigned every, from; static int init;
         if (!init) { const char *e = getenv("RR_DUMP_EVERY"), *f = getenv("RR_DUMP_FROM");
@@ -513,6 +547,10 @@ int main(int argc, char **argv)
     else if (windowed && g_cfg_freeplay >= 0) {        /* the saved menu choice, windowed runs only */
         rr_hw_set_freeplay(g_cfg_freeplay);
         fprintf(stderr, "[RR] %s (rr_controls.cfg)\n", g_cfg_freeplay ? "free play" : "coins required");
+    }
+    if (windowed && g_cfg_car >= 0 && g_rr_game->car_set && g_cfg_car < g_rr_game->ncars) {   /* the saved Car choice, windowed runs only */
+        g_rr_game->car_set(g_cfg_car);
+        fprintf(stderr, "[RR] car %d %s (controls cfg)\n", g_cfg_car + 1, g_rr_game->cars[g_cfg_car]);
     }
     if (windowed) rr_hw_set_steering_motor(g_cfg_ffb_strength > 0);   /* the game only drives the motor with its own option ON */
     if (rep_path) rr_input_replay_eeprom(g_rr.eeprom);   /* a replay: the session's own EEPROM */
