@@ -1,5 +1,5 @@
-PROP CYCLE, RAVE RACER, TOKYO WARS, DIRT DASH, TIME CRISIS, ACE DRIVER, CYBER COMMANDO, CYBER SLED and TIME CRISIS 2
-======================================================================================================================
+PROP CYCLE, RAVE RACER, TOKYO WARS, DIRT DASH, TIME CRISIS, ACE DRIVER, CYBER COMMANDO, RIDGE RACER 2, CYBER SLED and TIME CRISIS 2
+=====================================================================================================================================
 
 1. Put the MAME ROM sets into the "roms" folder (don't unzip them):
      Prop Cycle   propcycl.zip
@@ -10,10 +10,11 @@ PROP CYCLE, RAVE RACER, TOKYO WARS, DIRT DASH, TIME CRISIS, ACE DRIVER, CYBER CO
      Time Crisis  timecris.zip
      Ace Driver   acedrive.zip  and  namcoc74.zip
      Cyber Commando  cybrcomm.zip  and  namcoc74.zip
+     Ridge Racer 2   ridgera2.zip  and  namcoc74.zip
      Cyber Sled   cybsled.zip  and  namcoc67.zip  and  namcoc68.zip
      Time Crisis 2  timecrs2.zip
 
-2. Double-click PropCycle.exe, RaveRacer.exe, TokyoWars.exe, DirtDash.exe, ArmadilloRacing.exe, TimeCrisis.exe, AceDriver.exe, CyberCommando.exe, CyberSled.exe or TimeCrisis2.exe.
+2. Double-click PropCycle.exe, RaveRacer.exe, TokyoWars.exe, DirtDash.exe, ArmadilloRacing.exe, TimeCrisis.exe, AceDriver.exe, CyberCommando.exe, RidgeRacer2.exe, CyberSled.exe or TimeCrisis2.exe.
 
 That's it. The first start takes a few seconds while it unpacks the ROMs.
 Nothing needs installing. Keep the "mesa" folder beside PropCycle.exe: it is
@@ -107,6 +108,17 @@ KEYS -- CYBER COMMANDO  (Cyber Sled's layout)
   Two joysticks: Esc -> Controls, Enter on "Left stick up" and push the left joystick forward, and so on
   for every direction of both sticks and every button (see TWO STICKS below).
 
+KEYS -- RIDGE RACER 2
+---------------------
+  5             insert a coin (a game costs three)
+  X / Up        gas (it also confirms in the menus: there is no Start button)
+  Z / Down      brake          Left / Right  steer
+  A / S         shift down / up
+  F2            the operator's test switch (press again to leave)       9   service
+  Esc           menu: Display (widescreen ...), Audio, Controls; Debug: the game's developer screens
+  F11           fullscreen     F12        screenshot
+  Pad: left stick steer, A gas, B brake, shoulders shift, Back coin, Start or R3 menu.
+
 KEYS -- CYBER SLED
 ------------------
   5             insert a coin             1 / Enter   start
@@ -142,13 +154,14 @@ PROBLEMS?
                                 (World, AM2 Ver.A), "timecris"
                                 (World, TS2 Ver.B), "acedrive" (World, AD2)
                                 plus "namcoc74", "cybrcomm" (Japan, CY1)
+                                plus "namcoc74", "ridgera2" (World, RRS2)
                                 plus "namcoc74", and "cybsled" (World, CY2)
                                 plus "namcoc67" and "namcoc68".
 
 "Windows protected your PC"     Click "More info", then "Run anyway".
                                 (The games are not signed.)
 
-Slow or stuttering              Open the game's log (raveracer.log, tokyowars.log, dirtdash.log, adillor.log, timecris.log, acedriver.log, cybrcomm.log, cybsled.log,
+Slow or stuttering              Open the game's log (raveracer.log, tokyowars.log, dirtdash.log, adillor.log, timecris.log, acedriver.log, cybrcomm.log, ridgeracer2.log, cybsled.log,
                                 propcycl.log beside the .exe). The line "[HOST] OpenGL: ..." says which
                                 graphics chip is used: on a laptop with two of them it must be the
                                 fast one (NVIDIA / AMD card). If not, set it by hand: Windows Settings >
@@ -162,7 +175,7 @@ Black screen or won't start     Update your graphics driver. In a virtual
                                 PropCycle.exe.
 
 Something else                  Each game writes a log beside it, from its
-                                last start: propcycl.log / raveracer.log / tokyowar.log / dirtdash.log / adillor.log / timecris.log / acedriver.log / cybrcomm.log / cybsled.log.
+                                last start: propcycl.log / raveracer.log / tokyowar.log / dirtdash.log / adillor.log / timecris.log / acedriver.log / cybrcomm.log / ridgeracer2.log / cybsled.log.
                                 It says what went wrong.
 
 Keep the folder somewhere you can write to (Downloads, Desktop, Documents --

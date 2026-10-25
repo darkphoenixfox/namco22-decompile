@@ -35,6 +35,7 @@ void rr_host_set_wide_169(int on);       /* widescreen's shape: 0 the window's, 
 void rr_host_set_scaling(int s);         /* 0 smooth, 1 sharp, 2 integer */
 void rr_host_set_volume(int percent);
 void rr_host_set_freeplay(bool on);
+void rr_host_set_car(int i);                /* the game's car option (rr_game_t.cars), saved as `car` */
 void rr_host_set_ffb_strength(int pct);    /* 0-100, 0 = off; also the game's STEERING MOTOR option */
 void rr_host_set_ffb_invert(bool on);
 void rr_host_set_stick_steer(int level);   /* Controls > Stick steering, saved as stick_steering */

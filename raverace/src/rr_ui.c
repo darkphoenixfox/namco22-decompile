@@ -74,7 +74,8 @@ static bool kb_moved;                  /* keep the selected row in view after a 
 
 /* ---- the rows ------------------------------------------------------------- */
 enum { D_WIDE, D_DRAW, D_MODE, D_SIZE, D_RES, D_ASPECT, D_SCALING, D_HUD, D_FPS, D_N };
-enum { C_FREEPLAY, C_FFB, C_FFB_DIR, C_STICK, C_N };      /* the Controls page's rows before the bindings */
+enum { C_FREEPLAY, C_FFB, C_FFB_DIR, C_STICK, C_CAR, C_FIXED = C_CAR };   /* the Controls page's rows before the bindings */
+#define C_N (C_FIXED + (g_rr_game->ncars > 0))                 /* + Car, for a game that lists its cars (rr_game_t.cars) */
 enum { O_SERVER, O_NAME, O_HOST, O_FIND, O_CONNECT, O_STATUS, O_LOBBY0 };   /* then, not connected: one row per LAN game found; connected: the players, Ready, Start */
 static int online_rows(void) { return O_LOBBY0 + (rr_net_connected() ? rr_net_roster_count() + 2 : rr_net_found_count()); }
 static int online_self_ready(void)
@@ -159,6 +160,10 @@ static void row_text(int t, int r, char *label, size_t ln, char *value, size_t v
         }
         else if (r == C_FFB_DIR) { snprintf(label, ln, "FFB direction"); snprintf(value, vn, "%s", g_cfg_ffb_invert ? "reversed" : "normal"); }
         else if (r == C_STICK) { snprintf(label, ln, "Stick steering"); snprintf(value, vn, "%s", g_stick_steer_name[g_cfg_stick_steer]); }   /* GitHub #42 */
+        else if (r == C_CAR && g_rr_game->ncars > 0) {
+            const int c = g_rr_game->car_get ? g_rr_game->car_get() : 0;
+            snprintf(label, ln, "Car"); snprintf(value, vn, "%d %s", c + 1, c >= 0 && c < g_rr_game->ncars ? g_rr_game->cars[c] : "?");
+        }
         else if (r >= C_N + n_acts()) {
             const int c = r - C_N - n_acts();
             if (c == ts_count()) { snprintf(label, ln, "Stick deadzone"); snprintf(value, vn, "%d%%", ts_deadzone()); }
@@ -287,6 +292,10 @@ static void row_change(int t, int r, int dir)
         else if (r == C_FFB) rr_host_set_ffb_strength(dir ? g_cfg_ffb_strength + 10 * dir : (g_cfg_ffb_strength + 10) % 110);   /* Enter cycles */
         else if (r == C_FFB_DIR) rr_host_set_ffb_invert(!g_cfg_ffb_invert);
         else if (r == C_STICK) rr_host_set_stick_steer(dir ? g_cfg_stick_steer + dir : g_cfg_stick_steer + 1);   /* left/right step, Enter cycles */
+        else if (r == C_CAR && g_rr_game->ncars > 0) {
+            const int n = g_rr_game->ncars, c = g_rr_game->car_get ? g_rr_game->car_get() : 0;
+            rr_host_set_car(((dir ? c + dir : c + 1) % n + n) % n);                                       /* left/right step, Enter cycles */
+        }
         else if (r >= C_N + n_acts()) {
             const int c = r - C_N - n_acts();
             if (c == ts_count()) { int v = ts_deadzone() + (dir ? dir : 1) * 5; if (!dir && v > 50) v = 0; ts_set_deadzone(v); }   /* Enter cycles */

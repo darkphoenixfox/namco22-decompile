@@ -332,7 +332,18 @@ void rr_gl_prepare(bool slave_active)
 {
     if (!assets_ok) return;
     g_eng_frame++;
-    { static int hold; hud_on = eng_hud_marks_up(g_rr.text, hud_marks, (int)(sizeof hud_marks / sizeof *hud_marks), &hold); }
+    {
+        static int hold, n = -1; static eng_hud_mark game_marks[32]; const eng_hud_mark *m = hud_marks;
+        if (n < 0) {                                    /* a game's own marks (rr_game_t.hud_marks), else Rave Racer's */
+            n = (int)(sizeof hud_marks / sizeof *hud_marks);
+            if (g_rr_game->hud_marks && g_rr_game->n_hud_marks > 0) {
+                n = g_rr_game->n_hud_marks < 32 ? g_rr_game->n_hud_marks : 32;
+                for (int i = 0; i < n; i++) game_marks[i] = (eng_hud_mark){ g_rr_game->hud_marks[i][0], g_rr_game->hud_marks[i][1], g_rr_game->hud_marks[i][2] };
+            }
+        }
+        if (g_rr_game->hud_marks && g_rr_game->n_hud_marks > 0) m = game_marks;
+        hud_on = eng_hud_marks_up(g_rr.text, m, n, &hold);
+    }
     /* update_mixer (System 22), latched with the frame */
     frame_mixer_flags  = mixer_b(0x00) << 8 | mixer_b(0x01);
     frame_bg_palbase   = mixer_b(0x04) << 8 & 0x7f00;

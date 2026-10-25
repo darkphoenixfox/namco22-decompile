@@ -26,7 +26,7 @@
 
 rr_bind_t g_bind[RR_ACT_N];
 int g_steer_speed = 160, g_steer_return = 160;      /* MAME PORT_KEYDELTA(160) */
-int g_cfg_freeplay = -1;
+int g_cfg_freeplay = -1, g_cfg_car = -1;
 int g_cfg_volume = 100;
 int g_cfg_ffb_strength = 100, g_cfg_ffb_invert = 0;   /* the wheel motor on a force-feedback wheel: 0-100 % (0 = off), push the other way */
 int g_cfg_fullscreen = 0, g_cfg_scale = 2, g_cfg_scaling = 0;
@@ -126,6 +126,7 @@ void rr_input_load(const char *path)
         if (!strcmp(k, "pad_deadzone")) { g_pad_deadzone = atoi(v); continue; }
         if (!strcmp(k, "stick_steering")) { int x = atoi(v); g_cfg_stick_steer = x < 0 || x >= RR_STICK_N ? 0 : x; continue; }
         if (!strcmp(k, "free_play")) { g_cfg_freeplay = atoi(v) ? 1 : 0; continue; }
+        if (!strcmp(k, "car")) { g_cfg_car = atoi(v); continue; }
         if (!strcmp(k, "ffb_strength")) { int x = atoi(v); g_cfg_ffb_strength = x < 0 ? 0 : x > 100 ? 100 : x; continue; }
         if (!strcmp(k, "ffb_invert")) { g_cfg_ffb_invert = atoi(v) ? 1 : 0; continue; }
         if (!strcmp(k, "volume")) { int x = atoi(v); g_cfg_volume = x < 0 ? 0 : x > 100 ? 100 : x; continue; }
