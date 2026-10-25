@@ -47,10 +47,13 @@ int  tc2_gl_init(void);                                /* after the window's GL 
 int  tc2_gl_ok(void);
 void tc2_gl_set_scale(int s);                          /* the internal resolution: 640 * s x 480 * s */
 unsigned tc2_gl_draw(const tc2_built *b);              /* draws b; returns the GL texture holding the picture */
+unsigned tc2_gl_draw_eye(const tc2_built *b, int eye); /* 3D: one eye of b (-1 left, +1 right: its own texture; 0 = tc2_gl_draw) */
+void tc2_gl_set_stereo(int sep_mm, int conv_cm);       /* 3D: the two cameras' distance apart (mm), the screen plane's distance (cm) */
 int  tc2_gl_scale(void);
 void tc2_gl_set_wide(int e);                           /* widescreen: the picture is (640 + 2e) x 480 board pixels, the 3D wider (Hor+), the text in the 4:3 centre */
 int  tc2_gl_wide(void);
 int  tc2_gl_read_full(uint8_t *rgb, int cap);           /* the whole target, RGB, top row first: returns its width */
+int  tc2_gl_read_full_eye(int eye, uint8_t *rgb, int cap);   /* the same for one eye of the 3D picture (eye > 0: the right) */
 void tc2_gl_read(uint32_t *rgba);                      /* the last picture at 640 x 480 (0x00RRGGBB, top row first) -- screenshots, the gate */
 /* the software back end, on a built frame (the gate) */
 void tc2_soft_raster(const tc2_built *b, uint32_t *rgba);

@@ -27,6 +27,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include "tc2_build.h"
+#include "tc2_game.h"
 
 /* the post-1.1 entry points, from the driver at run time (the same on Linux and Windows) */
 #define GLFN(T, n) static T p_##n;
@@ -161,7 +162,7 @@ static const char *fs_gamma =
     "  gl_FragColor = vec4(texelFetch(t_lut, ivec2(i.r, 0), 0).r, texelFetch(t_lut, ivec2(i.g, 0), 0).g, texelFetch(t_lut, ivec2(i.b, 0), 0).b, 1.0);\n"
     "}\n";
 static int ok, scale = 1, ex, fbw, fbh;                  /* ex: widescreen margin each side, in board pixels (0 = 4:3) */
-static GLuint prog_poly, prog_text, prog_gamma, vbo, quad_vbo, t_out, fbo_out, t_lut;
+static GLuint prog_poly, prog_text, prog_gamma, vbo, quad_vbo, t_out, fbo_out, t_out_r, fbo_out_r, t_lut;   /* *_r: the right eye (3D) */
 static GLint ug[2];
 static GLuint t_band, t_rom, t_map, t_pal, t_sten, t_mix, t_col, t_prio, fbo_col, fbo_prio;
 static GLint up[20], ut[16];
@@ -203,10 +204,10 @@ static GLuint texture(GLint ifmt, int w, int h, GLenum fmt, const void *data)
 static int targets(void)
 {
     fbw = (640 + 2 * ex) * scale; fbh = 480 * scale;
-    if (!t_col) { glGenTextures(1, &t_col); glGenTextures(1, &t_prio); glGenTextures(1, &t_out);
-                  p_glGenFramebuffers(1, &fbo_col); p_glGenFramebuffers(1, &fbo_prio); p_glGenFramebuffers(1, &fbo_out); }
-    const GLuint tt[3] = { t_col, t_prio, t_out }, ff[3] = { fbo_col, fbo_prio, fbo_out };
-    for (int i = 0; i < 3; i++) {
+    if (!t_col) { glGenTextures(1, &t_col); glGenTextures(1, &t_prio); glGenTextures(1, &t_out); glGenTextures(1, &t_out_r);
+                  p_glGenFramebuffers(1, &fbo_col); p_glGenFramebuffers(1, &fbo_prio); p_glGenFramebuffers(1, &fbo_out); p_glGenFramebuffers(1, &fbo_out_r); }
+    const GLuint tt[4] = { t_col, t_prio, t_out, t_out_r }, ff[4] = { fbo_col, fbo_prio, fbo_out, fbo_out_r };
+    for (int i = 0; i < 4; i++) {
         glBindTexture(GL_TEXTURE_2D, tt[i]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -305,10 +306,39 @@ int tc2_gl_init(void)
     return 1;
 }
 
+/* ---- STEREO 3D (Display > 3D): the arcade's own camera split into two parallel cameras st_sep apart, their frusta shifted so a point
+ * st_conv away lands on the screen plane (off-axis stereo). Moving a camera sideways by s only moves a vertex's screen x by fov * s / z,
+ * and the polygons already carry 1/z, so each eye is the same built frame with one shift per vertex -- same sort order, same pipeline,
+ * and the two eyes average to the arcade's picture exactly. Not a free camera: the game's own view, nothing else.
+ * Units: the reconstructed z is fixed point / 16384; 2/3 of a unit is a metre (measured on stage 1's characters, Robert 1.70 m, by the
+ * Time Crisis II VR port, github.com/DR-89/time-crisis-2-vr quest/tc2_scene.c). */
+#define ST_UNITS_PER_M (2.0f / 3.0f)
+#define ST_FLAT_Z 0.3f                                   /* nearer than this (units, ~45 cm) is not scenery: drawn at the screen plane */
+static int st_eye;                                       /* the eye being drawn: -1 left, +1 right, 0 the ordinary (mono) picture */
+static int st_sep_mm = 65, st_conv_cm = 400;             /* the cameras' distance apart (mm) and the screen plane's distance (cm) */
+void tc2_gl_set_stereo(int sep_mm, int conv_cm)
+{
+    st_sep_mm = sep_mm < 0 ? 0 : sep_mm > 400 ? 400 : sep_mm;
+    st_conv_cm = conv_cm < 50 ? 50 : conv_cm > 5000 ? 5000 : conv_cm;
+}
+/* screen layout, not world: the direct quads (already projected), and the HUD's models (tc2_game.flat_models) -- drawn without parallax */
+static int st_flat(const tc2_built *b, const tc2_poly *p)
+{
+    if (p->entry < 0 || p->entry >= b->fs.list.count) return 1;
+    if (b->fs.list.e[p->entry].type == TC2_RE_DIRECT) return 1;
+    for (int i = 0; i < tc2_game.nflat_models && p->model >= 0; i++)
+        if (p->model >= tc2_game.flat_models[i][0] && p->model <= tc2_game.flat_models[i][1]) return 1;
+    /* a polygon wholly nearer than ST_FLAT_Z is screen layout with a made-up depth (HUD art at 0.25 units and nearer, the shot impacts: no
+     * scenery comes that close -- the nearest real models in stage 1 are 0.33+); its parallax would throw it to the screen's edges */
+    for (int i = 0; i < p->n; i++) if (p->pv[i].p[0] < 1.0f / ST_FLAT_Z) return 0;
+    return 1;
+}
+
 /* the frame's polygons as triangles, in draw order: per vertex its clip position (x*w, y*w, 0, w with w = z, so GL interpolates u, v and
  * the shade perspective-correct exactly as the hardware's u/z, v/z, i/z), u v shade, and the polygon's parameters and viewport clip */
 static int fill_vertices(const tc2_built *b)
 {
+    const float st_half = st_sep_mm / 2000.0f * ST_UNITS_PER_M, st_iconv = 1.0f / (st_conv_cm / 100.0f * ST_UNITS_PER_M);
     size_t need = 0;
     for (int i = 0; i < b->npoly; i++) need += (size_t)(b->polys[i].n - 2) * 3;
     if (need * VFLOATS > vcap) { vcap = need * VFLOATS * 2 + 4096; verts = realloc(verts, vcap * sizeof *verts); }
@@ -321,12 +351,14 @@ static int fill_vertices(const tc2_built *b)
         const int full = ex && cl <= 0 && cr >= 640;
         const int ccl = full ? -ex : cl, ccr = full ? 640 + ex : cr;
         const float flags = (float)(p->stencil | p->blend << 1 | p->alpha_enabled << 2 | (p->prioverchar & 7) << 3);
+        /* this eye's camera: a vertex at depth z moves by -eye * fov * s * (1/z - 1/conv) board pixels (nearer than the screen plane: out) */
+        const float st_k = st_eye && !st_flat(b, p) ? -(float)st_eye * b->fs.list.e[p->entry].vp_fov * st_half : 0.0f;
         for (int k = 1; k + 1 < p->n; k++) {
             const int tri[3] = { 0, k, k + 1 };
             for (int j = 0; j < 3; j++) {
                 const tc2_pvert *v = &p->pv[tri[j]];
                 const float ooz = v->p[0] != 0 ? v->p[0] : 1e-30f, w = 1.0f / ooz;
-                const float sx = v->x + (float)cl, sy = v->y + (float)ct;
+                const float sx = v->x + (float)cl + st_k * (ooz - st_iconv), sy = v->y + (float)ct;
                 *o++ = ((sx + (float)ex) / (320.0f + (float)ex) - 1.0f) * w; *o++ = (sy / 240.0f - 1.0f) * w; *o++ = 0; *o++ = w;
                 *o++ = v->p[1] * w; *o++ = v->p[2] * w; *o++ = v->p[3] * w;
                 *o++ = (float)p->color_base; *o++ = (float)p->cmode; *o++ = (float)p->tbase; *o++ = flags;
@@ -361,9 +393,12 @@ static void text_pass(const tc2_built *b, int pass)
     draw_quad();
 }
 
-unsigned tc2_gl_draw(const tc2_built *b)
+/* one eye of the 3D picture (-1 left, +1 right; the right eye has its own output texture), or with eye 0 the ordinary picture */
+unsigned tc2_gl_draw_eye(const tc2_built *b, int eye)
 {
-    if (!ok || !b) return t_out;
+    const GLuint out = eye > 0 ? t_out_r : t_out, fbo_dst = eye > 0 ? fbo_out_r : fbo_out;
+    if (!ok || !b) return out;
+    st_eye = eye;
     GLint vp[4]; glGetIntegerv(GL_VIEWPORT, vp);
     const tc2_fx *f = &b->fx;
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -449,7 +484,7 @@ unsigned tc2_gl_draw(const tc2_built *b)
         for (int i = 0; i < 256; i++) { lut[3 * i] = b->fs.gamma[0][i]; lut[3 * i + 1] = b->fs.gamma[1][i]; lut[3 * i + 2] = b->fs.gamma[2][i]; }
         bind_tex(0, t_lut); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGB, GL_UNSIGNED_BYTE, lut);
         glDisable(GL_BLEND);
-        p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_out);
+        p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_dst);
         p_glUseProgram(prog_gamma); p_glUniform1i(ug[0], 0); p_glUniform1i(ug[1], 1);
         bind_tex(0, t_col); bind_tex(1, t_lut);
         draw_quad();
@@ -460,8 +495,10 @@ unsigned tc2_gl_draw(const tc2_built *b)
     for (int u = 3; u >= 0; u--) bind_tex(u, 0);
     glViewport(vp[0], vp[1], vp[2], vp[3]);
     glClearColor(0, 0, 0, 1);
-    return t_out;
+    st_eye = 0;
+    return out;
 }
+unsigned tc2_gl_draw(const tc2_built *b) { return tc2_gl_draw_eye(b, 0); }
 
 /* the last picture at 640 x 480, top row first (every scale-th pixel when the internal resolution is higher) */
 void tc2_gl_read(uint32_t *rgba)
@@ -480,13 +517,14 @@ void tc2_gl_read(uint32_t *rgba)
             rgba[y * 640 + x] = (uint32_t)c[0] << 16 | (uint32_t)c[1] << 8 | c[2];
         }
 }
-/* the whole target (fbw x fbh, RGB, top row first) -- the gate's full-resolution shot */
-int tc2_gl_read_full(uint8_t *rgb, int cap)
+/* the whole target (fbw x fbh, RGB, top row first) -- the gate's full-resolution shot; eye > 0: the right eye's (3D) */
+int tc2_gl_read_full_eye(int eye, uint8_t *rgb, int cap)
 {
     if (!ok || cap < fbw * fbh * 3) return 0;
-    p_glBindFramebuffer(GL_FRAMEBUFFER, fbo_out);
+    p_glBindFramebuffer(GL_FRAMEBUFFER, eye > 0 ? fbo_out_r : fbo_out);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, fbw, fbh, GL_RGB, GL_UNSIGNED_BYTE, rgb);
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return fbw;
 }
+int tc2_gl_read_full(uint8_t *rgb, int cap) { return tc2_gl_read_full_eye(0, rgb, cap); }

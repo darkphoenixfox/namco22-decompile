@@ -41,7 +41,7 @@ static eng_vsync vs;
 static eng_pace pace;
 static GLuint tex;
 static int gpu;                                                /* the GPU renderer is up */
-static GLuint gpu_tex;
+static GLuint gpu_tex, gpu_tex_r;                             /* the picture; gpu_tex_r the right eye's when 3D is on (gpu_tex the left's) */
 static uint32_t pic[640 * 480];
 static int paused, shots;
 static int smooth_active;                                      /* motion smoothing: this game frame shows in-between frames */
@@ -50,6 +50,45 @@ static const tc2_built *smooth_shown;
 static const char *smooth_tag;                                 /* ENG_SWAPLOG: which picture the next swap shows */
 static int smooth_frozen;                                      /* the frame's slot may be rewritten (tc2_render_frame_end ran): no more GPU draws from it */
 static SDL_Rect pic_r;                                          /* the GAME's 4:3 area in drawable pixels: the gun aims and the crosshair live here */
+/* STEREO 3D (Display > 3D, F9 cycles it; GPU only): the arcade camera split into two eyes (src/tc2_gl.c tc2_gl_draw_eye). Until a 3D display
+ * is driven directly, the two pictures are shown for checking: side by side (each eye the full-window picture squeezed into half the window, left eye on the left --
+ * what a 3D TV or a parallel viewer takes), cross-eyed (the eyes swapped, to free-view), or red / cyan anaglyph glasses. LEIA SR: a display of
+ * Leia's SR platform (Samsung Odyssey 3D) driven directly -- its eye tracker and weaver interlace the two pictures for the player's eyes */
+enum { TC2_3D_OFF, TC2_3D_SBS, TC2_3D_CROSS, TC2_3D_ANAGLYPH, TC2_3D_LEIA, TC2_3D_N };
+int tc2_3d_mode, tc2_3d_sep = 65, tc2_3d_conv = 400;           /* the mode; the cameras' distance apart (mm); the screen plane's distance (cm) */
+int tc2_3d_count(void) { return TC2_3D_N; }
+const char *tc2_3d_mode_name(int m)
+{
+    static const char *n[TC2_3D_N] = { "OFF", "side by side (left eye left)", "cross-eyed (eyes swapped)", "anaglyph (red / cyan glasses)",
+                                       "Leia SR display (Odyssey 3D)" };
+    return m >= 0 && m < TC2_3D_N ? n[m] : "?";
+}
+static int leia_start(void); static void leia_stop(void);
+static void st_apply(int mode, int sep_mm, int conv_cm)
+{
+    tc2_3d_mode = mode < 0 || mode >= TC2_3D_N ? 0 : mode;
+    tc2_3d_sep = sep_mm < 0 ? 0 : sep_mm > 400 ? 400 : sep_mm; tc2_3d_conv = conv_cm < 50 ? 50 : conv_cm > 5000 ? 5000 : conv_cm;
+    tc2_gl_set_stereo(tc2_3d_sep, tc2_3d_conv);
+    if (tc2_3d_mode == TC2_3D_LEIA) { if (!leia_start()) tc2_3d_mode = TC2_3D_OFF; }   /* no SR display / platform: back to the 2D picture */
+    else leia_stop();
+}
+void tc2_3d_set(int mode, int sep_mm, int conv_cm)              /* the menu, F9: applied and saved in tc2.cfg */
+{
+    st_apply(mode, sep_mm, conv_cm);
+    eng_cfg_set_int("stereo", tc2_3d_mode); eng_cfg_set_int("stereo_sep", tc2_3d_sep); eng_cfg_set_int("stereo_conv", tc2_3d_conv);
+}
+static int stereo_on(void) { return gpu && tc2_3d_mode != TC2_3D_OFF; }
+/* side by side: the WHOLE window is split, each half the window's full picture (black bars, widescreen and all) squeezed to half its
+ * width -- what a 3D display in side-by-side mode stretches back to the full screen per eye. 1 = no split (mono, anaglyph) */
+static int sbs_halves(void) { return stereo_on() && (tc2_3d_mode == TC2_3D_SBS || tc2_3d_mode == TC2_3D_CROSS) ? 2 : 1; }
+static void draw_gpu(const tc2_built *b);
+void tc2_3d_redraw(void) { if (gpu && win) { const tc2_built *b = tc2_built_latest(); if (b) draw_gpu(b); } }   /* a 3D change shows at once, paused or in the menu */
+/* the GPU picture of b: one, or with 3D the two eyes */
+static void draw_gpu(const tc2_built *b)
+{
+    if (stereo_on()) { gpu_tex = tc2_gl_draw_eye(b, -1); gpu_tex_r = tc2_gl_draw_eye(b, 1); }
+    else gpu_tex = tc2_gl_draw(b);
+}
 /* widescreen (Display > Widescreen, GPU only): the picture takes the window's shape, (640 + 2 * ex) x 480 board pixels, Hor+ */
 static int wide_ex(void)
 {
@@ -185,6 +224,11 @@ void tc2_crash_box(const char *why)
 
 int tc2_window_open(int scale, int fullscreen)
 {
+    /* Windows: DPI-AWARE. Without it a display scaled by Windows (a 4K panel at 150 %) gets a smaller picture stretched by the desktop -- soft,
+     * and fatal to a Leia SR display, whose weaving must land on the panel's own pixels. With SDL's DPI scaling the window keeps its size in
+     * scaled units and the drawable is in pixels (the HiDPI case the menu and the pointer code already handle) */
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) { fprintf(stderr, "[HOST] SDL: %s\n", SDL_GetError()); return 0; }
     { void tc2_audio_open(void); tc2_audio_open(); }                  /* the C352 (src/tc2_audio.c) */
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -202,6 +246,11 @@ int tc2_window_open(int scale, int fullscreen)
       eng_disp_load(cfg, scale, fullscreen != 0); }
     g_eng_disp_light_gun = true;                 /* a light-gun game: the Display page shows the crosshair row */
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+    /* fullscreen is an ordinary window, not TOPMOST, and stays as it is when another window takes the focus: a 3D display's own program
+     * (Samsung Odyssey 3D: the side-by-side conversion) must be able to sit in front of the game. $SDL_ALLOW_TOPMOST /
+     * $SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS still override these */
+    SDL_SetHint(SDL_HINT_ALLOW_TOPMOST, "0");
+    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     char title[96];                                      /* "Time Crisis II 0.9.3": the release in the title bar (a dev build: the name alone) */
 #ifdef TC2_VERSION
     snprintf(title, sizeof title, "%s %s", tc2_game.window_title, TC2_VERSION);
@@ -210,7 +259,7 @@ int tc2_window_open(int scale, int fullscreen)
 #endif
     win = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            eng_disp_win_w(g_eng_disp.scale), eng_disp_win_h(g_eng_disp.scale),
-                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
+                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (g_eng_disp.winmode == 1 || g_eng_disp.winmode == 2 ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "[HOST] window: %s\n", SDL_GetError()); return 0; }
     glc = SDL_GL_CreateContext(win);
     if (!glc) { fprintf(stderr, "[HOST] OpenGL: %s\n", SDL_GetError()); return 0; }
@@ -243,33 +292,67 @@ int tc2_window_open(int scale, int fullscreen)
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 640, 480, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
     gpu = tc2_gl_init();
+    st_apply(eng_cfg_int("stereo", 0), eng_cfg_int("stereo_sep", 65), eng_cfg_int("stereo_conv", 400));
     { void tc2_render_soft(int); tc2_render_soft(!gpu); }       /* the worker then only builds the frame; the GPU draws it */
     return 1;
 }
 
+/* a texture over [x0, x1] of the picture (0..1 across) */
+static void picture_quad(GLuint t, float x0, float x1)
+{
+    glBindTexture(GL_TEXTURE_2D, t);
+    const GLint f = eng_disp_sharp() ? GL_NEAREST : GL_LINEAR;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0); glVertex2f(x0, 0); glTexCoord2f(1, 0); glVertex2f(x1, 0);
+    glTexCoord2f(1, 1); glVertex2f(x1, 1); glTexCoord2f(0, 1); glVertex2f(x0, 1);
+    glEnd();
+}
+/* the gun border OVER the 4:3 game area (pic_r, where the gun aims), on top of the picture; side by side: the same frame in each half (the
+ * screen plane) */
+static void draw_border_over(int halves, int dw, int dh)
+{
+    if (!g_eng_disp.gun_border || !g_eng_disp.gun_border_over) return;
+    const int bd = g_eng_disp.gun_border * (dw < dh ? dw : dh) / 1000, y = dh - pic_r.y - pic_r.h;
+    glEnable(GL_SCISSOR_TEST); glClearColor(1, 1, 1, 1);
+    for (int hv = 0; hv < halves; hv++) {
+        const int x = hv * dw / 2 + pic_r.x / halves, w = pic_r.w / halves, b = bd / halves > 0 ? bd / halves : 1;
+        glScissor(x, y, w, bd); glClear(GL_COLOR_BUFFER_BIT);                     /* bottom, top, left, right */
+        glScissor(x, y + pic_r.h - bd, w, bd); glClear(GL_COLOR_BUFFER_BIT);
+        glScissor(x, y, b, pic_r.h); glClear(GL_COLOR_BUFFER_BIT);
+        glScissor(x + w - b, y, b, pic_r.h); glClear(GL_COLOR_BUFFER_BIT);
+    }
+    glDisable(GL_SCISSOR_TEST); glClearColor(0, 0, 0, 1);
+}
 static void draw_picture(void)
 {
     int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
     glViewport(0, 0, dw, dh);
     glClearColor(0, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
     const SDL_Rect r = picture_rect(gpu ? tc2_gl_wide() : 0);
-    if (g_eng_disp.gun_border) {                                /* F8: a white frame round the picture for Sinden-style light guns */
-        const int bd = g_eng_disp.gun_border * (dw < dh ? dw : dh) / 100;
-        glEnable(GL_SCISSOR_TEST); glScissor(r.x - bd, dh - r.y - r.h - bd, r.w + 2 * bd, r.h + 2 * bd);
-        glClearColor(1, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT); glDisable(GL_SCISSOR_TEST); glClearColor(0, 0, 0, 1);
+    const int halves = sbs_halves(), swap = tc2_3d_mode == TC2_3D_CROSS;
+    for (int hv = 0; hv < halves; hv++) {                       /* side by side: the same layout in each half of the window, squeezed */
+        const int ox = hv * dw / 2;
+        const int x = ox + r.x / halves, w = r.w / halves;
+        if (g_eng_disp.gun_border && !g_eng_disp.gun_border_over) {   /* F8: a white frame round the picture for Sinden-style light guns */
+            const int bd = g_eng_disp.gun_border * (dw < dh ? dw : dh) / 1000;
+            glEnable(GL_SCISSOR_TEST); glScissor(x - bd / halves, dh - r.y - r.h - bd, w + 2 * bd / halves, r.h + 2 * bd);
+            glClearColor(1, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT); glDisable(GL_SCISSOR_TEST); glClearColor(0, 0, 0, 1);
+        }
+        glViewport(x, dh - r.y - r.h, w, r.h);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 1, 0, -1, 1);
+        glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+        glEnable(GL_TEXTURE_2D);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        if (!stereo_on()) picture_quad(gpu ? gpu_tex : tex, 0, 1);
+        else if (tc2_3d_mode == TC2_3D_ANAGLYPH) {               /* the left eye in red, the right in green + blue */
+            glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_TRUE); picture_quad(gpu_tex, 0, 1);
+            glColorMask(GL_FALSE, GL_TRUE, GL_TRUE, GL_TRUE); picture_quad(gpu_tex_r, 0, 1);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        } else picture_quad((hv == 0) != swap ? gpu_tex : gpu_tex_r, 0, 1);
     }
-    glViewport(r.x, dh - r.y - r.h, r.w, r.h);
-    glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 1, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
-    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, gpu ? gpu_tex : tex);
-    const GLint f = eng_disp_sharp() ? GL_NEAREST : GL_LINEAR;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-    glBegin(GL_QUADS);
-    glTexCoord2f(0, 0); glVertex2f(0, 0); glTexCoord2f(1, 0); glVertex2f(1, 0);
-    glTexCoord2f(1, 1); glVertex2f(1, 1); glTexCoord2f(0, 1); glVertex2f(0, 1);
-    glEnd();
     glDisable(GL_TEXTURE_2D);
+    draw_border_over(halves, dw, dh);
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);   /* the default again: the menu (Nuklear) colours a white texel by its vertices */
     glViewport(0, 0, dw, dh);
 }
@@ -300,13 +383,17 @@ static void draw_crosshair(void)
     set_pointer(eng_ui_is_open() ? 1 : (!g_eng_disp.crosshair || on) ? 0 : 1);
     if (!g_eng_disp.crosshair || !on || eng_ui_is_open()) return;
     const SDL_Rect r = pic_r;
-    const float x = r.x + ax * r.w, y = r.y + ay * r.h;
+    const float xa = r.x + ax * r.w, y = r.y + ay * r.h;
     const float k = r.h / 480.0f, a = 14 * k, gap = 4 * k, w = k < 1.5f ? 1.5f : k;
     glViewport(0, 0, dw, dh);
     glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, dw, dh, 0, -1, 1);
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     glDisable(GL_TEXTURE_2D);
-    if (eng_xhair_draw(x, y, (float)r.h)) { glColor3f(1, 1, 1); return; }   /* Display > Crosshair image (src/eng/eng_crosshair.h) */
+    /* 3D side by side: the cross in each half of the window, at the screen plane (the same place in both eyes) */
+    const int halves = sbs_halves();
+    for (int hv = 0; hv < halves; hv++) {
+    const float x = (float)(hv * dw / 2) + xa / halves;
+    if (eng_xhair_draw(x, y, (float)r.h)) { glColor3f(1, 1, 1); continue; }   /* Display > Crosshair image (src/eng/eng_crosshair.h) */
     for (int pass = 0; pass < 2; pass++) {                    /* a dark outline, then the bright cross: visible on any background */
         glLineWidth(pass ? w : w + 2);
         if (pass) glColor3f(1.0f, 0.25f, 0.2f); else glColor3f(0, 0, 0);
@@ -315,7 +402,171 @@ static void draw_crosshair(void)
         glVertex2f(x, y - a); glVertex2f(x, y - gap); glVertex2f(x, y + gap); glVertex2f(x, y + a);
         glEnd();
     }
+    }
     glColor3f(1, 1, 1); glLineWidth(1);
+}
+
+/* ---- LEIA SR (Display > 3D > Leia SR display) -------------------------------------------------------------------------------------------
+ * The weaver is Leia's (C++, MSVC): src/leia/tc2_leia.cpp is built into tc2_leia.dll beside the game and loaded here, so a computer without
+ * it -- or without the Leia SR platform -- simply cannot choose this mode. Each picture: (1) what both eyes share -- the crosshair, the gun
+ * border over the game, the menu -- drawn ONCE into a clear overlay; (2) the two eyes side by side in one texture, each the whole window's
+ * picture with that overlay on it, so the overlay sits at the screen plane (on a lenticular panel anything drawn after weaving would be
+ * split between the eyes); (3) the weaver interlaces that into the window for the eyes its tracker sees. */
+#ifdef _WIN32
+#include <SDL2/SDL_syswm.h>
+#define LGL_FRAMEBUFFER 0x8D40
+#define LGL_COLOR_ATTACHMENT0 0x8CE0
+#define LGL_FRAMEBUFFER_COMPLETE 0x8CD5
+static struct {
+    HMODULE dll; int ok, w, h;
+    const char *(*error)(void); int (*open)(HWND, double); int (*display)(int *, int *);
+    void (*set_view)(unsigned, int, int); void (*weave)(void); void (*close)(void);
+    void (APIENTRY *GenFramebuffers)(GLsizei, GLuint *); void (APIENTRY *BindFramebuffer)(GLenum, GLuint);
+    void (APIENTRY *FramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint); GLenum (APIENTRY *CheckFramebufferStatus)(GLenum);
+    void (APIENTRY *UseProgram)(GLuint); void (APIENTRY *ActiveTexture)(GLenum); void (APIENTRY *BindBuffer)(GLenum, GLuint);
+    void (APIENTRY *BindVertexArray)(GLuint);
+    GLuint t_ovl, t_sbs, fbo_ovl, fbo_sbs;
+} lr;
+#define LOADFN(dst, src, name) (*(void **)&(dst) = (void *)(src)(name))
+static void *dll_fn(const char *n) { return (void *)GetProcAddress(lr.dll, n); }
+static int leia_start(void)
+{
+    if (lr.ok) return 1;
+    if (!gpu || !win) return 0;
+    const char *why = NULL;
+    if (!lr.dll) {
+        char p[1024] = "tc2_leia.dll";
+        { char *bp = SDL_GetBasePath(); if (bp) { snprintf(p, sizeof p, "%stc2_leia.dll", bp); SDL_free(bp); } }
+        if ((lr.dll = LoadLibraryA(p))) {
+            LOADFN(lr.error, dll_fn, "leia_error"); LOADFN(lr.open, dll_fn, "leia_open"); LOADFN(lr.display, dll_fn, "leia_display");
+            LOADFN(lr.set_view, dll_fn, "leia_set_view"); LOADFN(lr.weave, dll_fn, "leia_weave"); LOADFN(lr.close, dll_fn, "leia_close");
+        }
+    }
+    if (!lr.dll || !lr.error || !lr.open || !lr.display || !lr.set_view || !lr.weave || !lr.close)
+        why = "tc2_leia.dll is not beside the game, or the Leia SR platform is not installed";
+    SDL_SysWMinfo info; SDL_VERSION(&info.version);
+    if (!why && (!SDL_GetWindowWMInfo(win, &info) || info.subsystem != SDL_SYSWM_WINDOWS)) why = "no window handle";
+    if (!why) {
+        LOADFN(lr.GenFramebuffers, SDL_GL_GetProcAddress, "glGenFramebuffers"); LOADFN(lr.BindFramebuffer, SDL_GL_GetProcAddress, "glBindFramebuffer");
+        LOADFN(lr.FramebufferTexture2D, SDL_GL_GetProcAddress, "glFramebufferTexture2D");
+        LOADFN(lr.CheckFramebufferStatus, SDL_GL_GetProcAddress, "glCheckFramebufferStatus");
+        LOADFN(lr.UseProgram, SDL_GL_GetProcAddress, "glUseProgram"); LOADFN(lr.ActiveTexture, SDL_GL_GetProcAddress, "glActiveTexture");
+        LOADFN(lr.BindBuffer, SDL_GL_GetProcAddress, "glBindBuffer"); LOADFN(lr.BindVertexArray, SDL_GL_GetProcAddress, "glBindVertexArray");
+        if (!lr.GenFramebuffers || !lr.BindFramebuffer || !lr.FramebufferTexture2D || !lr.CheckFramebufferStatus || !lr.UseProgram || !lr.ActiveTexture || !lr.BindBuffer)
+            why = "the OpenGL driver lacks framebuffer objects";
+    }
+    if (!why && !lr.open(info.info.win.window, 3.0)) why = lr.error();
+    if (why) {
+        fprintf(stderr, "[LEIA] not available: %s\n", why);
+        char b[256]; snprintf(b, sizeof b, "3D: Leia SR not available -- %s", why); eng_ui_set_hint(b, 400);
+        return 0;
+    }
+    /* the window onto the SR display (the weaving is for that panel's pixels); compared in the desktop's own pixels */
+    int rect[4], view[2];
+    if (lr.display(rect, view)) {
+        fprintf(stderr, "[LEIA] SR display at %d,%d, %d x %d; recommended view %d x %d\n", rect[0], rect[1], rect[2], rect[3], view[0], view[1]);
+        RECT wr; HWND hw = info.info.win.window;
+        if (GetWindowRect(hw, &wr)) {
+            const int cx = (wr.left + wr.right) / 2, cy = (wr.top + wr.bottom) / 2;
+            if (cx < rect[0] || cx >= rect[0] + rect[2] || cy < rect[1] || cy >= rect[1] + rect[3]) {
+                const int mode = g_eng_disp.winmode;
+                SDL_SetWindowFullscreen(win, 0);
+                SetWindowPos(hw, NULL, rect[0] + 40, rect[1] + 40, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                eng_disp_set_winmode(mode);                      /* fullscreen / borderless again, now on the SR display */
+                fprintf(stderr, "[LEIA] the window moved onto the SR display\n");
+            }
+        }
+    } else fprintf(stderr, "[LEIA] the SR platform reports no SR display: weaving for the window where it is\n");
+    lr.ok = 1; lr.w = lr.h = 0;
+    eng_ui_set_hint("3D: Leia SR display", 120);
+    return 1;
+}
+static void leia_stop(void)
+{
+    if (!lr.ok) return;
+    lr.close(); lr.ok = 0;
+    fprintf(stderr, "[LEIA] weaver closed\n");
+}
+static GLuint leia_target(GLuint *t, GLuint *fbo, int w, int h)
+{
+    if (!*t) { glGenTextures(1, t); lr.GenFramebuffers(1, fbo); }
+    glBindTexture(GL_TEXTURE_2D, *t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    lr.BindFramebuffer(LGL_FRAMEBUFFER, *fbo);
+    lr.FramebufferTexture2D(LGL_FRAMEBUFFER, LGL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *t, 0);
+    const int good = lr.CheckFramebufferStatus(LGL_FRAMEBUFFER) == LGL_FRAMEBUFFER_COMPLETE;
+    lr.BindFramebuffer(LGL_FRAMEBUFFER, 0);
+    return good;
+}
+/* the overlay (one window) and the side-by-side pair (two windows wide), remade when the window's size changes */
+static int leia_targets(int dw, int dh)
+{
+    if (dw == lr.w && dh == lr.h) return 1;
+    if (!leia_target(&lr.t_ovl, &lr.fbo_ovl, dw, dh) || !leia_target(&lr.t_sbs, &lr.fbo_sbs, 2 * dw, dh)) { fprintf(stderr, "[LEIA] render targets incomplete\n"); return 0; }
+    lr.w = dw; lr.h = dh;
+    lr.set_view(lr.t_sbs, dw, dh);                               /* one eye's size; the texture holds both, the left eye on the left */
+    fprintf(stderr, "[LEIA] weaving %d x %d per eye\n", dw, dh);
+    return 1;
+}
+static void leia_compose(int ui, bool *quit)
+{
+    int dw, dh; SDL_GL_GetDrawableSize(win, &dw, &dh);
+    if (!leia_targets(dw, dh)) { draw_picture(); draw_crosshair(); if (ui) eng_ui_draw(quit); return; }
+    const SDL_Rect r = picture_rect(tc2_gl_wide());
+    /* 1. what both eyes share, once */
+    lr.BindFramebuffer(LGL_FRAMEBUFFER, lr.fbo_ovl);
+    glViewport(0, 0, dw, dh); glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT); glClearColor(0, 0, 0, 1);
+    draw_border_over(1, dw, dh);
+    draw_crosshair();
+    if (ui) eng_ui_draw(quit);
+    /* 2. the eyes side by side, each with the overlay */
+    lr.BindFramebuffer(LGL_FRAMEBUFFER, lr.fbo_sbs);
+    glViewport(0, 0, 2 * dw, dh); glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_TEXTURE_2D); glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    for (int e = 0; e < 2; e++) {
+        const int ox = e * dw;
+        if (g_eng_disp.gun_border && !g_eng_disp.gun_border_over) {   /* the gun border round the picture (F8) */
+            const int bd = g_eng_disp.gun_border * (dw < dh ? dw : dh) / 1000;
+            glEnable(GL_SCISSOR_TEST); glScissor(ox + r.x - bd, dh - r.y - r.h - bd, r.w + 2 * bd, r.h + 2 * bd);
+            glClearColor(1, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT); glDisable(GL_SCISSOR_TEST); glClearColor(0, 0, 0, 1);
+        }
+        glViewport(ox + r.x, dh - r.y - r.h, r.w, r.h);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 1, 0, -1, 1);
+        glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+        picture_quad(e ? gpu_tex_r : gpu_tex, 0, 1);
+        glViewport(ox, 0, dw, dh);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity(); glOrtho(0, 1, 0, 1, -1, 1);   /* the overlay as it lies in its texture */
+        glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);              /* drawn over a clear background: premultiplied */
+        glBindTexture(GL_TEXTURE_2D, lr.t_ovl);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0, 0); glVertex2f(0, 0); glTexCoord2f(1, 0); glVertex2f(1, 0);
+        glTexCoord2f(1, 1); glVertex2f(1, 1); glTexCoord2f(0, 1); glVertex2f(0, 1);
+        glEnd();
+        glDisable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    glDisable(GL_TEXTURE_2D); glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    /* 3. woven into the window; then the state the rest of the window code expects (the weaver has its own shaders and buffers) */
+    lr.BindFramebuffer(LGL_FRAMEBUFFER, 0);
+    glViewport(0, 0, dw, dh); glClear(GL_COLOR_BUFFER_BIT);
+    lr.weave();
+    lr.UseProgram(0); lr.BindBuffer(0x8892 /* GL_ARRAY_BUFFER */, 0); if (lr.BindVertexArray) lr.BindVertexArray(0);
+    lr.ActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, 0);
+    glViewport(0, 0, dw, dh);
+}
+#else
+static int leia_start(void) { eng_ui_set_hint("3D: Leia SR displays need Windows", 300); return 0; }
+static void leia_stop(void) {}
+static void leia_compose(int ui, bool *quit) { draw_picture(); draw_crosshair(); if (ui) eng_ui_draw(quit); }
+#endif
+/* the window's picture, the crosshair and (ui) the menu / the hint line: as they are, or woven for a Leia SR display */
+static void compose(int ui, bool *quit)
+{
+    if (stereo_on() && tc2_3d_mode == TC2_3D_LEIA) { leia_compose(ui, quit); return; }
+    draw_picture();
+    draw_crosshair();
+    if (ui) eng_ui_draw(quit);
 }
 
 static void screenshot(void)
@@ -325,9 +576,12 @@ static void screenshot(void)
     FILE *f = fopen(p, "wb"); if (!f) return;
     if (gpu) {                                                   /* the whole GPU picture: its internal resolution, widescreen included */
         const int w = (640 + 2 * tc2_gl_wide()) * tc2_gl_scale(), h = 480 * tc2_gl_scale();
-        uint8_t *rgb = malloc((size_t)w * h * 3);
-        if (rgb && tc2_gl_read_full(rgb, w * h * 3)) { fprintf(f, "P6\n%d %d\n255\n", w, h); fwrite(rgb, 1, (size_t)w * h * 3, f); }
-        free(rgb);
+        uint8_t *rgb = malloc((size_t)w * h * 3), *rgb_r = stereo_on() ? malloc((size_t)w * h * 3) : NULL;
+        if (rgb && rgb_r && tc2_gl_read_full_eye(-1, rgb, w * h * 3) && tc2_gl_read_full_eye(1, rgb_r, w * h * 3)) {
+            fprintf(f, "P6\n%d %d\n255\n", 2 * w, h);              /* 3D: both eyes at full size, left eye left (a stereo pair) */
+            for (int y = 0; y < h; y++) { fwrite(rgb + (size_t)y * w * 3, 1, (size_t)w * 3, f); fwrite(rgb_r + (size_t)y * w * 3, 1, (size_t)w * 3, f); }
+        } else if (rgb && !rgb_r && tc2_gl_read_full(rgb, w * h * 3)) { fprintf(f, "P6\n%d %d\n255\n", w, h); fwrite(rgb, 1, (size_t)w * h * 3, f); }
+        free(rgb); free(rgb_r);
     } else {
         fprintf(f, "P6\n640 480\n255\n");
         for (int i = 0; i < 640 * 480; i++) { const unsigned char c[3] = { (unsigned char)(pic[i] >> 16), (unsigned char)(pic[i] >> 8), (unsigned char)pic[i] }; fwrite(c, 1, 3, f); }
@@ -344,10 +598,10 @@ static void smooth_draw(double frac)
     while (k + 1 < smooth_np && smooth_at[k] < frac) k++;
     /* after tc2_render_frame_end the old frame's slot is the back slot: its snapshot is overwritten and the worker rebuilds it, so the old
      * frame's last ticks re-show what gpu_tex holds instead of drawing from it (a data race, seen as torn pictures with smoothing on) */
-    if (smooth_pic[k] && smooth_pic[k] != smooth_shown && !smooth_frozen) { gpu_tex = tc2_gl_draw(smooth_pic[k]); smooth_shown = smooth_pic[k]; }
+    if (smooth_pic[k] && smooth_pic[k] != smooth_shown && !smooth_frozen) { draw_gpu(smooth_pic[k]); smooth_shown = smooth_pic[k]; }
     { static char t[32]; snprintf(t, sizeof t, "at%.2f", smooth_at[k]); smooth_tag = t; }
 }
-static void smooth_extra(void *ctx, double frac) { (void)ctx; smooth_draw(frac); eng_vsync_extra_tag = smooth_tag; draw_picture(); draw_crosshair(); }
+static void smooth_extra(void *ctx, double frac) { (void)ctx; smooth_draw(frac); eng_vsync_extra_tag = smooth_tag; compose(0, NULL); }
 
 /* the new frame's picture(s): the newest built frame drawn on the GPU at the chosen internal resolution (or the software picture), and
  * with MOTION SMOOTHING (Display > Motion smoothing, src/tc2_render.c) and more than one picture a game frame, its in-between frames */
@@ -368,7 +622,7 @@ static void prepare_frame(void *ctx)
             for (int k = 0; k < nm; k++) { smooth_pic[smooth_np] = tc2_built_mid(k); smooth_at[smooth_np++] = nm == 1 ? 0.5 : (k + 1) / 3.0; }
             smooth_pic[smooth_np] = b; smooth_at[smooth_np++] = 1.0;
             smooth_draw(0.0);                                    /* the first one is ready for the period's first tick */
-        } else if (b) gpu_tex = tc2_gl_draw(b);
+        } else if (b) draw_gpu(b);
     } else { tc2_text_render(pic); glBindTexture(GL_TEXTURE_2D, tex); glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 640, 480, GL_BGRA, GL_UNSIGNED_BYTE, pic); }
 }
 /* polled presentation: a tick's picture into the back buffer */
@@ -377,9 +631,7 @@ static void present_draw(void *ctx, double frac)
     (void)ctx;
     if (smooth_active) smooth_draw(frac); else smooth_tag = "frame";
     eng_vsync_extra_tag = smooth_tag;
-    draw_picture();
-    draw_crosshair();
-    eng_ui_draw(NULL);                                           /* closed: the hint line and the online chat overlay */
+    compose(1, NULL);                                            /* the menu closed: the hint line and the online chat overlay */
 }
 /* from the CPU's slice loop (src/tc2_cpu.c rr_tick): serve a picture tick that came due while the game runs; the clock is read every 8th slice */
 void (*tc2_present_hook)(void);
@@ -409,6 +661,9 @@ static int pass(int new_frame)
             case SDL_SCANCODE_F6: { void ss22_input_flash_step(int); ss22_input_flash_step(1); { extern int ss22_input_gun_flash(void); char b[48]; const int f = ss22_input_gun_flash(); void eng_ui_set_hint(const char *, int); if (f) snprintf(b, sizeof b, "Gun shot flash: %d%%", f); else snprintf(b, sizeof b, "Gun shot flash: OFF"); eng_ui_set_hint(b, 120); } } break;   /* the shot flash's strength: 100, 75, 50, 25, OFF */
             case SDL_SCANCODE_F7: { void ss22_input_mouse_step(int); ss22_input_mouse_step(1); } break;   /* the mouse speed: Direct, 125, 150, 200, 300 % */
             case SDL_SCANCODE_F8: eng_disp_cycle_gun_border(); break;     /* the light gun's white border round the picture (Sinden-style guns) */
+            case SDL_SCANCODE_F9: { tc2_3d_set((tc2_3d_mode + 1) % TC2_3D_N, tc2_3d_sep, tc2_3d_conv);   /* 3D: OFF, side by side, cross-eyed, anaglyph */
+                void eng_ui_set_hint(const char *, int); char b[64]; snprintf(b, sizeof b, gpu ? "3D: %s" : "3D: needs the GPU picture", tc2_3d_mode_name(tc2_3d_mode)); eng_ui_set_hint(b, 120);
+                tc2_3d_redraw(); } break;
             default: break;
             }
         }
@@ -441,9 +696,7 @@ static int pass(int new_frame)
     if (!new_frame) smooth_active = 0;                            /* the menu / pause: the kept picture (menu included) is re-shown */
     vs.extra = smooth_active ? smooth_extra : NULL;
     if (eng_vsync_show(&vs)) {
-        draw_picture();
-        draw_crosshair();
-        eng_ui_draw(&quit);                                      /* the menu, or (closed) the hint line and the online chat overlay */
+        compose(1, &quit);                                       /* the menu, or (closed) the hint line and the online chat overlay */
         { /* tests: TC2_WINSHOT=path:pass reads the whole window back (menu included) to a PPM */
           static long at = -2; static char path[512]; static long n;
           if (at == -2) { at = -1; const char *e = getenv("TC2_WINSHOT"); if (e) { snprintf(path, sizeof path, "%s", e); char *c = strrchr(path, ':'); if (c) { *c = 0; at = atol(c + 1); } } }
@@ -473,5 +726,5 @@ void tc2_window_frame(void)
     if (!win) return;
     int ok = pass(1);
     while (ok && (eng_ui_is_open() || paused)) { { void tc2_link_paused(void); tc2_link_paused(); } ok = pass(0); if (!eng_ui_is_open() && !paused) eng_vsync_resync(&vs); }
-    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
+    if (!ok) { fprintf(stderr, "[HOST] quit\n"); { void tc2_backup_save(int); tc2_backup_save(1); } leia_stop(); { void tc2_out_close(void); tc2_out_close(); } ss22_input_close(); eng_ui_shutdown(); SDL_Quit(); exit(0); }
 }

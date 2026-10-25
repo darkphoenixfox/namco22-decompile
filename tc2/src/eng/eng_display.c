@@ -22,7 +22,7 @@ static const struct { int w, h; } res_list[] = {
     { 1280, 800 }, { 1920, 1200 }, { 2560, 1080 }, { 3440, 1440 },
 };
 #define NRES ((int)(sizeof res_list / sizeof res_list[0]))
-static const char *winmode_name[3] = { "Windowed", "Fullscreen (desktop)", "Fullscreen (exclusive)" };
+static const char *winmode_name[4] = { "Windowed", "Fullscreen (desktop)", "Fullscreen (exclusive)", "Borderless (for 3D apps)" };
 static const char *aspect_cfg[4]   = { "stretch", "4:3", "8:7", "16:9" };
 static const char *aspect_name_[4] = { "Stretch to window", "4:3", "8:7", "16:9" };
 static const char *scaling_cfg[3]  = { "smooth", "sharp", "integer" };
@@ -36,7 +36,7 @@ void eng_disp_res_label(int w, int h, char *out, size_t n)
     else if (w == BASE_W && h == BASE_H) snprintf(out, n, "640 x 480  (arcade)");
     else snprintf(out, n, "%d x %d", w, h);
 }
-const char *eng_disp_winmode_name(int m) { return winmode_name[m < 0 ? 0 : m > 2 ? 2 : m]; }
+const char *eng_disp_winmode_name(int m) { return winmode_name[m < 0 ? 0 : m > 3 ? 3 : m]; }
 const char *eng_disp_aspect_name(int a)  { return aspect_name_[a < 0 ? 0 : a > 3 ? 3 : a]; }
 const char *eng_disp_scaling_name(int s) { return scaling_name_[s < 0 ? 0 : s > 2 ? 2 : s]; }
 
@@ -82,7 +82,8 @@ SDL_Rect eng_disp_picture_rect(int bw, int bh)
     int ow, oh;
     out_size(&ow, &oh);
     const int fw = ow, fh = oh;
-    const int bd = g_eng_disp.gun_border ? g_eng_disp.gun_border * (ow < oh ? ow : oh) / 100 : 0;   /* the light gun's border: the picture sits inside it */
+    const int bd = g_eng_disp.gun_border && !g_eng_disp.gun_border_over ? g_eng_disp.gun_border * (ow < oh ? ow : oh) / 1000 : 0;   /* the light gun's
+                                                                     * border round the picture: the picture sits inside it (over the game: drawn on top, no room taken) */
     ow -= 2 * bd; oh -= 2 * bd; (void)fw; (void)fh;
     double ar = (double)bw / bh;
     if (!g_eng_disp.wide) {
@@ -106,8 +107,20 @@ bool eng_disp_sharp(void) { return g_eng_disp.scaling != 0; }
 static void apply_window(void)
 {
     if (!win) return;
-    if (g_eng_disp.winmode < 0 || g_eng_disp.winmode > 2) g_eng_disp.winmode = 0;
-    if (g_eng_disp.winmode == 2) {
+    if (g_eng_disp.winmode < 0 || g_eng_disp.winmode > 3) g_eng_disp.winmode = 0;
+    SDL_SetWindowBordered(win, g_eng_disp.winmode == 3 ? SDL_FALSE : SDL_TRUE);
+    if (g_eng_disp.winmode == 3) {
+        /* BORDERLESS FOR 3D APPS: an ordinary window over the whole monitor, ONE ROW TALLER than it. A window exactly covering the monitor
+         * is taken by the NVIDIA OpenGL driver as fullscreen and presented directly, and then no other window shows above it -- a 3D
+         * display's converter (Samsung Odyssey 3D: it shows the side-by-side picture converted, in its own window, and forwards the keys and
+         * the gun to the game) stayed behind the game. One row more keeps the window composited like any other */
+        int disp = SDL_GetWindowDisplayIndex(win); if (disp < 0) disp = 0;
+        SDL_Rect b; if (SDL_GetDisplayBounds(disp, &b) != 0) { b.x = b.y = 0; b.w = 1920; b.h = 1080; }
+        SDL_SetWindowFullscreen(win, 0);
+        SDL_SetWindowPosition(win, b.x, b.y);
+        SDL_SetWindowSize(win, b.w, b.h + 1);
+        fprintf(stderr, "[DISPLAY] borderless %dx%d (+1 row) on monitor %d\n", b.w, b.h, disp + 1);
+    } else if (g_eng_disp.winmode == 2) {
         /* EXCLUSIVE: switch the monitor to the mode nearest the chosen resolution (native: the desktop's own) */
         int disp = SDL_GetWindowDisplayIndex(win); if (disp < 0) disp = 0;
         SDL_DisplayMode want = { 0, g_eng_disp.res_w, g_eng_disp.res_h, 0, 0 }, got;
@@ -137,7 +150,7 @@ void eng_disp_load(const char *cfg_path, int scale, bool fullscreen)
     eng_display_t *d = &g_eng_disp;
     d->wide = eng_cfg_int("widescreen", 0) != 0;
     d->winmode = eng_cfg_int("window_mode", eng_cfg_int("fullscreen", 0) ? 1 : 0);
-    if (d->winmode < 0 || d->winmode > 2) d->winmode = 0;
+    if (d->winmode < 0 || d->winmode > 3) d->winmode = 0;
     d->scale = eng_cfg_int("window_scale", 2);
     if (d->scale < 1 || d->scale > 4) d->scale = 2;
     d->res_w = BASE_W; d->res_h = BASE_H;
@@ -152,8 +165,9 @@ void eng_disp_load(const char *cfg_path, int scale, bool fullscreen)
     for (int i = 0; s && i < 3; i++) if (!strcmp(s, scaling_cfg[i])) d->scaling = i;
     d->hud_edges = eng_cfg_int("wide_hud", 1) != 0;
     { extern int g_eng_hud_edges_on; g_eng_hud_edges_on = d->hud_edges; }
-    d->gun_border = eng_cfg_int("gun_border", 0);
-    if (d->gun_border < 0 || d->gun_border > 6) d->gun_border = 0;
+    d->gun_border = eng_cfg_int("gun_border_tenths", 10 * eng_cfg_int("gun_border", 0));   /* older cfgs: whole percents */
+    if (d->gun_border < 0 || d->gun_border > 100) d->gun_border = 0;
+    d->gun_border_over = eng_cfg_int("gun_border_over", 0) != 0;
     d->crosshair = eng_cfg_int("crosshair", 1) != 0;
     d->fps = eng_vsync_rate_valid(eng_cfg_int("frame_rate", ENG_VSYNC_DEFAULT));
     d->volume = eng_cfg_int("volume", 100);
@@ -178,7 +192,7 @@ void eng_disp_load(const char *cfg_path, int scale, bool fullscreen)
 void eng_disp_attach(SDL_Window *w)
 {
     win = w;
-    if (g_eng_disp.winmode == 2) apply_window();                                  /* exclusive: set the mode */
+    if (g_eng_disp.winmode >= 2) apply_window();                                  /* exclusive: set the mode; borderless: place it */
     else if (!g_eng_disp.winmode && g_eng_disp.scale > max_scale()) apply_window();   /* too big for this display: shrink */
     if (g_eng_disp.winmode) SDL_ShowCursor(SDL_DISABLE);
     if (volume_hook) volume_hook(g_eng_disp.volume);
@@ -187,7 +201,7 @@ void eng_disp_attach(SDL_Window *w)
 /* ---- the setters the menu drives: apply, and save ---------------------------- */
 void eng_disp_set_winmode(int m)
 {
-    g_eng_disp.winmode = m < 0 ? 0 : m > 2 ? 2 : m;
+    g_eng_disp.winmode = m < 0 ? 0 : m > 3 ? 3 : m;
     apply_window();
     eng_cfg_set_int("window_mode", g_eng_disp.winmode);
     eng_cfg_set_int("fullscreen", g_eng_disp.winmode ? 1 : 0);
@@ -229,11 +243,21 @@ void eng_disp_set_fps(int fps)
     eng_cfg_set_int("frame_rate", g_eng_disp.fps);
 }
 
-void eng_disp_cycle_gun_border(void)
+void eng_disp_set_gun_border(int tenths)
 {
-    g_eng_disp.gun_border = (g_eng_disp.gun_border + 1) % 7;
-    char b[8]; snprintf(b, sizeof b, "%d", g_eng_disp.gun_border);
-    eng_cfg_set("gun_border", b);
+    g_eng_disp.gun_border = tenths <= 0 ? 0 : tenths < 5 ? 5 : tenths > 100 ? 100 : tenths;
+    eng_cfg_set_int("gun_border_tenths", g_eng_disp.gun_border);
+    eng_cfg_set_int("gun_border", (g_eng_disp.gun_border + 5) / 10);
+}
+void eng_disp_cycle_gun_border(void)                     /* the next whole percent: off, 1..6 % */
+{
+    const int n = (g_eng_disp.gun_border / 10 + 1) * 10;
+    eng_disp_set_gun_border(n > 60 ? 0 : n);
+}
+void eng_disp_set_gun_border_over(int on)
+{
+    g_eng_disp.gun_border_over = on != 0;
+    eng_cfg_set_int("gun_border_over", g_eng_disp.gun_border_over);
 }
 
 void eng_disp_set_wide(int on)

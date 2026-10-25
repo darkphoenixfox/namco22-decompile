@@ -460,7 +460,7 @@ static void pg_text(int r, char *l, size_t ln, char *v, size_t vn)
     if (r == 3 && nffb() > 2) { snprintf(l, ln, "FFB road effects"); snprintf(v, vn, "%d%%", ffb_road); return; }
     r -= nffb();
     if (r == 0 && ngun()) { snprintf(l, ln, "Gun shot flash"); if (gun_flash_on == 100) snprintf(v, vn, "100%% (as the arcade)"); else if (gun_flash_on) snprintf(v, vn, "%d%%", gun_flash_on); else snprintf(v, vn, "OFF (no white flash)"); return; }
-    if (r == 1 && ngun()) { snprintf(l, ln, "Gun border"); if (g_eng_disp.gun_border) snprintf(v, vn, "%d%%", g_eng_disp.gun_border); else snprintf(v, vn, "OFF"); return; }
+    if (r == 1 && ngun()) { snprintf(l, ln, "Gun border"); if (g_eng_disp.gun_border) snprintf(v, vn, "%d.%d%%", g_eng_disp.gun_border / 10, g_eng_disp.gun_border % 10); else snprintf(v, vn, "OFF"); return; }
     if (r == 2 && ngun()) { snprintf(l, ln, "Aim speed"); snprintf(v, vn, "%d%% (stick / keys)", aim_speed); return; }
     if (r == 3 && ngun()) {
         snprintf(l, ln, "Mouse speed");
@@ -534,8 +534,8 @@ static void pg_change(int r, int dir)
     }
     r -= nffb();
     if (r == 0 && ngun()) { ss22_input_flash_step(dir); return; }
-    if (r == 1 && ngun()) {                                        /* Gun border: off, 1..6 % (F8 too) */
-        if (dir < 0) { for (int k = 0; k < 6; k++) eng_disp_cycle_gun_border(); } else eng_disp_cycle_gun_border();
+    if (r == 1 && ngun()) {                                        /* Gun border: Left/Right 0.5 % steps (off, 0.5..10 %), Enter as F8 (whole %) */
+        if (dir) eng_disp_set_gun_border(g_eng_disp.gun_border + 5 * dir); else eng_disp_cycle_gun_border();
         return;
     }
     if (r == 2 && ngun()) {                                        /* Aim speed: Left/Right 10% steps (50-300 %), Enter cycles */

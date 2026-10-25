@@ -17,7 +17,12 @@ static const eng_rom_t chips[] = {
     { "tss1pt2h.4a", 0x400000, NULL, NULL, 0x9B06E22D }, { "tss1pt2l.4c", 0x400000, NULL, NULL, 0x4B230D79 },
     { "tss1waveh.2a", 0x800000, NULL, NULL, 0x5C8758B4 }, { "tss1wavel.2c", 0x800000, NULL, NULL, 0xDEAEAD26 },
 };
-static const char *const zips[] = { "timecrs2.zip", "namco_tssio.zip" };   /* a split MAME set keeps the I/O board's program in its device zip */
+static const char *const zips[] = { "timecrs2.zip", "namco_tssio.zip" };
+/* the HUD's 3D models (identified by the Time Crisis II VR port, github.com/DR-89/time-crisis-2-vr quest/tc2_scene.c, MIT): 3474 health,
+ * 3475-3476 ammo, 3477 the ejected HUD cartridge, 3478 the black screen mask (cut-scene letterbox and transitions), 5077-5082 the
+ * player / COM markers, 6083 the machine gun's ammunition icon; and 3039, the take-cover icon ("release pedal"), found here: z 0.25 units at
+ * scale 0.047, the icon's place on screen (stage 1, frame 3707 of a scripted run) */
+static const uint16_t flat_models[][2] = { { 3039, 3039 }, { 3474, 3478 }, { 5077, 5082 }, { 6083, 6083 } };   /* a split MAME set keeps the I/O board's program in its device zip */
 
 int tc2_rom_read(const char *dir, const char *name, uint8_t *dst, size_t n);   /* src/tc2_rom.c */
 
@@ -65,4 +70,5 @@ const tc2_game_t tc2_game = {
     .npt = 3, .pt_rom = { { "tss1pt0h.7a", "tss1pt0l.7c" }, { "tss1pt1h.5a", "tss1pt1l.5c" }, { "tss1pt2h.4a", "tss1pt2l.4c" } },
     .ccrl = "tss1ccrl.7f", .ccrh = "tss1ccrh.7e", .cg = { "tss1cgll.4m", "tss1cglm.4k", "tss1cgum.4j", "tss1cguu.4f" },
     .wave = { "tss1wavel.2c", "tss1waveh.2a" },
+    .flat_models = flat_models, .nflat_models = (int)(sizeof flat_models / sizeof flat_models[0]),
 };

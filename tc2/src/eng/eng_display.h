@@ -21,14 +21,17 @@
 
 typedef struct {
     int wide;                    /* 0/1 */
-    int winmode;                 /* 0 windowed, 1 fullscreen (desktop), 2 fullscreen (exclusive) */
+    int winmode;                 /* 0 windowed, 1 fullscreen (desktop), 2 fullscreen (exclusive), 3 borderless for 3D apps (see apply_window) */
     int scale;                   /* 1..4 */
     int res_w, res_h;            /* render size; res_h <= 0 = native */
     int aspect;                  /* 0 stretch, 1 4:3, 2 8:7, 3 16:9 */
     int scaling;                 /* 0 smooth, 1 sharp, 2 integer */
     int volume;                  /* 0..100 */
     int hud_edges;               /* widescreen: 1 = the HUD slides out to the screen edges (default), 0 = the original HUD stays in the 4:3 centre */
-    int gun_border;              /* light-gun games: a white border round the picture, 0..6 % of the window (Sinden-style guns need it), F8 cycles */
+    int gun_border;              /* light-gun games: a white border for Sinden-style guns, its width in TENTHS of a percent of the window's
+                                  * smaller side (0 = off, 5..100 = 0.5..10 %), F8 cycles whole percents */
+    int gun_border_over;         /* 0 = round the picture (the picture shrinks inside it); 1 = OVER the 4:3 game area (the region the gun aims
+                                  * at), drawn on top of the picture like the menu -- in 3D at the screen plane, the same in both eyes */
     int crosshair;               /* light-gun games: 1 = draw the aiming cross (default), 0 = none */
     int fps;                     /* Frame rate: pictures a second, 0 = Auto (the default; engine/eng_vsync.h; the game itself always runs at 59.906 Hz) */
 } eng_display_t;
@@ -51,7 +54,9 @@ bool eng_disp_sharp(void);                 /* the filter rt_end_rect wants: near
 void eng_disp_toggle_fullscreen(void);     /* F11: windowed <-> fullscreen (desktop) */
 
 void eng_disp_set_hud_edges(int on);
-void eng_disp_cycle_gun_border(void);      /* F8 in a light-gun game: off, 1..6 %, saved as gun_border */
+void eng_disp_cycle_gun_border(void);      /* F8 in a light-gun game: off, 1..6 % */
+void eng_disp_set_gun_border(int tenths);  /* 0 = off, 5..100 (0.5..10 %); saved as gun_border_tenths (and gun_border, whole %, for older builds) */
+void eng_disp_set_gun_border_over(int on); /* saved as gun_border_over */
 void eng_disp_set_crosshair(int on);       /* saved as crosshair */
 void eng_disp_set_fps(int fps);           /* saved as frame_rate (0 = Auto, the default) */
 void eng_disp_set_wide(int on);

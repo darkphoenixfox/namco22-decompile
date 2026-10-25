@@ -62,6 +62,9 @@ typedef struct {
      * speech_bank_lo..speech_bank_hi (hi 0 = no range), is mixed as speech. Measured per game with C352_KEYLOG on a recorded session */
     uint32_t speech_voices;
     uint8_t speech_bank_lo, speech_bank_hi;
+    /* STEREO 3D (Display > 3D, src/tc2_gl.c): the point-ROM models that are screen layout, not world -- HUD art the game draws as 3D models
+     * with tiny made-up depths. They are kept at the screen plane (no parallax) like the text layer; ranges [first, last], NULL = none */
+    const uint16_t (*flat_models)[2]; int nflat_models;
 } tc2_game_t;
 
 extern const tc2_game_t tc2_game;                 /* the one this binary was built for */
